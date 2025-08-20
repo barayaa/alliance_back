@@ -9,8 +9,12 @@ import {
   Query,
   BadRequestException,
   NotFoundException,
+  ValidationPipe,
 } from '@nestjs/common';
-import { ReglementService } from './reglement.service';
+import {
+  PaymentDistributionResult,
+  ReglementService,
+} from './reglement.service';
 import { CreateReglementDto } from './dto/create-reglement.dto';
 import { UpdateReglementDto } from './dto/update-reglement.dto';
 import { Reglement } from './reglement.entity';
@@ -18,6 +22,32 @@ import { Reglement } from './reglement.entity';
 @Controller('reglement')
 export class ReglementController {
   constructor(private readonly reglementService: ReglementService) {}
+
+  @Post()
+  // @ApiOperation({
+  //   summary:
+  //     'Créer un règlement avec répartition automatique sur les factures impayées',
+  // })
+  // @ApiResponse({
+  //   status: 201,
+  //   description: 'Règlement créé avec succès',
+  //   type: PaymentDistributionResult,
+  // })
+  // @ApiResponse({
+  //   status: 400,
+  //   description: 'Données invalides ou erreur lors de la création',
+  // })
+  async createReglement(
+    @Body(ValidationPipe) createReglementDto: CreateReglementDto,
+  ): Promise<PaymentDistributionResult> {
+    try {
+      return await this.reglementService.createReglement(createReglementDto);
+    } catch (error) {
+      throw new BadRequestException(
+        error.message || 'Erreur lors de la création du règlement',
+      );
+    }
+  }
 
   @Get('historique/:id_client')
   async findHistoriqueByClient(

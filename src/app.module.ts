@@ -50,6 +50,9 @@ import { ProformatModule } from './proformat/proformat.module';
 import { TitulaireAmmModule } from './titulaire_amm/titulaire_amm.module';
 import { CommandeAchatModule } from './commande_achat/commande_achat.module';
 import { SuiviStockModule } from './suivi_stock/suivi_stock.module';
+import { BanquesModule } from './banques/banques.module';
+import { ComptesModule } from './comptes/comptes.module';
+import { CaisseModule } from './caisse/caisse.module';
 
 @Module({
   imports: [
@@ -113,6 +116,9 @@ import { SuiviStockModule } from './suivi_stock/suivi_stock.module';
     VoieAdministrationModule,
     ProformatModule,
     SuiviStockModule,
+    BanquesModule,
+    ComptesModule,
+    CaisseModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -8,6 +8,9 @@ import {
 } from 'typeorm';
 import { Client } from '../client/client.entity';
 import { CommandeVente } from '../commande_vente/commande_vente.entity';
+import { TypeReglement } from 'src/type_reglement/type_reglement.entity';
+import { Caisse } from 'src/caisse/entities/caisse.entity';
+import { Compte } from 'src/comptes/entities/compte.entity';
 
 @Entity('reglement')
 export class Reglement {
@@ -42,4 +45,38 @@ export class Reglement {
     referencedColumnName: 'id_commande_vente',
   })
   commandeVente: CommandeVente;
+
+  @Column({ type: 'int' })
+  id_type_reglement: number;
+
+  @ManyToOne(
+    () => TypeReglement,
+    (typeReglement) => typeReglement.id_type_reglement,
+    { eager: false },
+  )
+  @JoinColumn({
+    name: 'id_type_reglement',
+    referencedColumnName: 'id_type_reglement',
+  })
+  typeReglement: TypeReglement;
+
+  @Column({ type: 'int', nullable: true })
+  id_caisse?: number;
+
+  @ManyToOne(() => Caisse, (caisse) => caisse.id_caisse, {
+    eager: false,
+    nullable: true,
+  })
+  @JoinColumn({ name: 'id_caisse', referencedColumnName: 'id_caisse' })
+  caisse?: Caisse;
+
+  @Column({ type: 'int', nullable: true })
+  id_compte?: number;
+
+  @ManyToOne(() => Compte, (compte) => compte.id_compte, {
+    eager: false,
+    nullable: true,
+  })
+  @JoinColumn({ name: 'id_compte', referencedColumnName: 'id_compte' })
+  compte?: Compte;
 }

@@ -31,6 +31,9 @@ export class Client {
   @Column({ type: 'int' })
   compte: number;
 
+  @Column({ type: 'double', default: 0 })
+  avance: number;
+
   @Column({ type: 'varchar', length: 25 })
   fax: string;
 

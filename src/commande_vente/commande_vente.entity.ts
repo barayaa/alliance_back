@@ -44,7 +44,7 @@ export class CommandeVente {
   @JoinColumn({ name: 'id_client' })
   client: Client;
 
-  @Column({ type: 'int' })
+  @Column({ type: 'int', default: 0 })
   reglee: number;
 
   @Column({ type: 'int' })
