@@ -63,7 +63,7 @@ import { CaisseModule } from './caisse/caisse.module';
       port: 3306,
       username: 'root',
       password: 'root',
-      database: 'tusday_db',
+      database: 'mercredi_db',
       migrations: ['src/migrations/*.ts'],
       autoLoadEntities: true,
       synchronize: false,

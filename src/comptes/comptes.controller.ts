@@ -15,7 +15,7 @@ import { UpdateCompteDto } from './dto/update-compte.dto';
 export class ComptesController {
   constructor(private readonly comptesService: ComptesService) {}
 
-  @Get(':id_banque')
+  @Get('id_banque/:id_banque')
   findCompteByBanqueId(@Param('id_banque') id_banque: string) {
     return this.comptesService.findCompteByBanqueId(+id_banque);
   }

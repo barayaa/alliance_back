@@ -19,6 +19,11 @@ import { Response } from 'express';
 export class ClientController {
   constructor(private readonly clientService: ClientService) {}
 
+  @Get('with-details')
+  async findAllWithDetails() {
+    return this.clientService.findAllWithDetails();
+  }
+
   @Get()
   async findAll(@Query('search') searchTerm: string) {
     return this.clientService.findAll(searchTerm);

@@ -23,20 +23,7 @@ import { Reglement } from './reglement.entity';
 export class ReglementController {
   constructor(private readonly reglementService: ReglementService) {}
 
-  @Post()
-  // @ApiOperation({
-  //   summary:
-  //     'Créer un règlement avec répartition automatique sur les factures impayées',
-  // })
-  // @ApiResponse({
-  //   status: 201,
-  //   description: 'Règlement créé avec succès',
-  //   type: PaymentDistributionResult,
-  // })
-  // @ApiResponse({
-  //   status: 400,
-  //   description: 'Données invalides ou erreur lors de la création',
-  // })
+  @Post('payement')
   async createReglement(
     @Body(ValidationPipe) createReglementDto: CreateReglementDto,
   ): Promise<PaymentDistributionResult> {

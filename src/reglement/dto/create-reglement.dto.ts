@@ -10,8 +10,8 @@ export class CreateReglementDto {
   @IsString({})
   date: string;
 
-  @IsString({})
-  id_commande_vente: string;
+  // @IsString({})
+  // id_commande_vente: string;
 
   @IsInt({ message: 'id_type_reglement doit être un entier' })
   id_type_reglement: number;

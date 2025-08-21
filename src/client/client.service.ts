@@ -31,6 +31,286 @@ export class ClientService {
     private lignesCommandeVenteRepository: Repository<LignesCommandeVente>,
   ) {}
 
+  async findAllWithDetails(): Promise<any[]> {
+    console.log('findAllWithDetails called');
+    try {
+      // Étape 1 : Récupérer tous les clients
+      const clients = await this.clientRepository
+        .createQueryBuilder('client')
+        .leftJoinAndSelect('client.statut', 'statut')
+        .select([
+          'client.id_client',
+          'client.nom',
+          'client.prenom',
+          'client.adresse',
+          'client.telephone',
+          'client.ville',
+          'client.email',
+          'client.nif',
+          'client.avance',
+          'statut.statut AS statut_statut',
+        ])
+        .getRawMany();
+
+      console.log('Raw clients data:', JSON.stringify(clients, null, 2));
+
+      // Étape 2 : Récupérer toutes les commandes validées
+      const commandes = await this.commandeVenteRepository.find({
+        where: { validee: 1 },
+        relations: ['client', 'reglements'],
+        order: { date_commande_vente: 'DESC' },
+      });
+
+      console.log('Commandes validées:', JSON.stringify(commandes, null, 2));
+
+      // Étape 3 : Construire le résultat avec application de l'avance
+      const result = clients.map((client) => {
+        const clientCommandes = commandes.filter(
+          (cmd) => cmd.id_client === client.client_id_client,
+        );
+
+        // Calculer les montants initiaux
+        let montantTotal = clientCommandes.reduce(
+          (sum, cmd) => sum + (cmd.montant_total || 0),
+          0,
+        );
+        let montantPaye = clientCommandes.reduce(
+          (sum, cmd) =>
+            sum +
+            (cmd.reglements || []).reduce(
+              (regSum, reg) => regSum + (reg.montant || 0),
+              0,
+            ),
+          0,
+        );
+
+        // Appliquer l'avance aux factures non réglées
+        let remainingAdvance = client.client_avance || 0;
+        const updatedCommandes = clientCommandes.map((cmd) => {
+          let cmdMontantPaye = (cmd.reglements || []).reduce(
+            (sum, reg) => sum + (reg.montant || 0),
+            0,
+          );
+          let cmdMontantRestant = cmd.montant_total - cmdMontantPaye;
+
+          // Appliquer l'avance si montant restant > 0 et avance disponible
+          if (cmdMontantRestant > 0 && remainingAdvance > 0) {
+            const amountToApply = Math.min(cmdMontantRestant, remainingAdvance);
+            cmdMontantPaye += amountToApply;
+            cmdMontantRestant -= amountToApply;
+            remainingAdvance -= amountToApply;
+          }
+
+          // Considérer la facture comme réglée si le solde restant est inférieur à 10 (tolérance)
+          const isReglee = Math.abs(cmdMontantRestant) <= 10 ? 1 : 0;
+
+          return {
+            id_commande_vente: cmd.id_commande_vente,
+            numero_facture_certifiee: cmd.numero_facture_certifiee,
+            numero_seq: cmd.numero_seq,
+            date_commande_vente: cmd.date_commande_vente,
+            montant_total: cmd.montant_total,
+            montant_paye: parseFloat(cmdMontantPaye.toFixed(2)),
+            montant_restant: parseFloat(cmdMontantRestant.toFixed(2)),
+            reglee: isReglee,
+            type_reglement: cmd.type_reglement,
+            reglements: (cmd.reglements || []).map((reg) => ({
+              id_reglement: reg.id_reglement,
+              montant: reg.montant,
+              date: reg.date,
+            })),
+          };
+        });
+
+        // Recalculer les montants totaux après application de l'avance
+        montantPaye = updatedCommandes.reduce(
+          (sum, cmd) => sum + cmd.montant_paye,
+          0,
+        );
+        const montantRestant = montantTotal - montantPaye;
+
+        // Log des commandes mises à jour pour ce client
+        console.log(
+          `Client ${client.client_id_client} - Commandes mises à jour:`,
+          JSON.stringify(
+            updatedCommandes.map((cmd) => ({
+              id_commande_vente: cmd.id_commande_vente,
+              montant_total: cmd.montant_total,
+              montant_paye: cmd.montant_paye,
+              montant_restant: cmd.montant_restant,
+              reglee: cmd.reglee,
+              reglements: cmd.reglements,
+            })),
+            null,
+            2,
+          ),
+          `Total: ${montantTotal}, Payé: ${montantPaye}, Restant: ${montantRestant}, Avance restante: ${remainingAdvance}`,
+        );
+
+        return {
+          id_client: client.client_id_client,
+          nom: client.client_nom,
+          prenom: client.client_prenom,
+          adresse: client.client_adresse,
+          telephone: client.client_telephone,
+          ville: client.client_ville,
+          email: client.client_email,
+          nif: client.client_nif,
+          avance: parseFloat(remainingAdvance.toFixed(2)),
+          statut: client.statut_statut || 'N/A',
+          montantTotal: parseFloat(montantTotal.toFixed(2)),
+          montantPaye: parseFloat(montantPaye.toFixed(2)),
+          montantRestant: parseFloat(montantRestant.toFixed(2)),
+          commandes: updatedCommandes,
+        };
+      });
+
+      console.log('Clients with details:', JSON.stringify(result, null, 2));
+      return result;
+    } catch (error) {
+      console.error(
+        'findAllWithDetails query failed:',
+        JSON.stringify(error, null, 2),
+      );
+      throw new InternalServerErrorException(
+        `Failed to execute findAllWithDetails query: ${error.message}`,
+      );
+    }
+  }
+  // async findAllWithDetails(): Promise<any[]> {
+  //   console.log('findAllWithDetails called');
+  //   try {
+  //     // Étape 1 : Récupérer tous les clients
+  //     const clients = await this.clientRepository
+  //       .createQueryBuilder('client')
+  //       .leftJoinAndSelect('client.statut', 'statut')
+  //       .select([
+  //         'client.id_client',
+  //         'client.nom',
+  //         'client.prenom',
+  //         'client.adresse',
+  //         'client.telephone',
+  //         'client.ville',
+  //         'client.email',
+  //         'client.nif',
+  //         'client.avance',
+  //         'statut.statut AS statut_statut',
+  //       ])
+  //       .getRawMany();
+
+  //     console.log('Raw clients data:', JSON.stringify(clients, null, 2));
+
+  //     // Étape 2 : Récupérer toutes les commandes validées
+  //     const commandes = await this.commandeVenteRepository.find({
+  //       where: { validee: 1 },
+  //       relations: ['client', 'reglements'],
+  //       order: { date_commande_vente: 'DESC' },
+  //     });
+
+  //     console.log('Commandes validées:', JSON.stringify(commandes, null, 2));
+
+  //     // Étape 3 : Construire le résultat en imitant findHistoriqueByClient
+  //     const result = clients.map((client) => {
+  //       const clientCommandes = commandes.filter(
+  //         (cmd) => cmd.id_client === client.client_id_client,
+  //       );
+
+  //       // Calculer les montants
+  //       const montantTotal = clientCommandes.reduce(
+  //         (sum, cmd) => sum + (cmd.montant_total || 0),
+  //         0,
+  //       );
+  //       const montantPaye = clientCommandes.reduce(
+  //         (sum, cmd) =>
+  //           sum +
+  //           (cmd.reglements || []).reduce(
+  //             (regSum, reg) => regSum + (reg.montant || 0),
+  //             0,
+  //           ),
+  //         0,
+  //       );
+  //       const montantRestant = montantTotal - montantPaye;
+
+  //       // Log des commandes incluses pour ce client
+  //       console.log(
+  //         `Client ${client.client_id_client} - Commandes incluses:`,
+  //         JSON.stringify(
+  //           clientCommandes.map((cmd) => ({
+  //             id_commande_vente: cmd.id_commande_vente,
+  //             montant_total: cmd.montant_total,
+  //             reglements: (cmd.reglements || []).map((reg) => ({
+  //               id_reglement: reg.id_reglement,
+  //               montant: reg.montant,
+  //             })),
+  //           })),
+  //           null,
+  //           2,
+  //         ),
+  //         `Total: ${montantTotal}, Payé: ${montantPaye}, Restant: ${montantRestant}`,
+  //       );
+
+  //       return {
+  //         id_client: client.client_id_client,
+  //         nom: client.client_nom,
+  //         prenom: client.client_prenom,
+  //         adresse: client.client_adresse,
+  //         telephone: client.client_telephone,
+  //         ville: client.client_ville,
+  //         email: client.client_email,
+  //         nif: client.client_nif,
+  //         avance: client.client_avance,
+  //         statut: client.statut_statut || 'N/A',
+  //         montantTotal: parseFloat(montantTotal.toFixed(2)),
+  //         montantPaye: parseFloat(montantPaye.toFixed(2)),
+  //         montantRestant: parseFloat(montantRestant.toFixed(2)),
+  //         commandes: clientCommandes.map((cmd) => ({
+  //           id_commande_vente: cmd.id_commande_vente,
+  //           numero_facture_certifiee: cmd.numero_facture_certifiee,
+  //           numero_seq: cmd.numero_seq,
+  //           date_commande_vente: cmd.date_commande_vente,
+  //           montant_total: cmd.montant_total,
+  //           montant_paye: (cmd.reglements || []).reduce(
+  //             (sum, reg) => sum + (reg.montant || 0),
+  //             0,
+  //           ),
+  //           montant_restant:
+  //             cmd.montant_total -
+  //             (cmd.reglements || []).reduce(
+  //               (sum, reg) => sum + (reg.montant || 0),
+  //               0,
+  //             ),
+  //           reglee:
+  //             cmd.montant_total -
+  //               (cmd.reglements || []).reduce(
+  //                 (sum, reg) => sum + (reg.montant || 0),
+  //                 0,
+  //               ) <=
+  //             0
+  //               ? 1
+  //               : 0,
+  //           type_reglement: cmd.type_reglement,
+  //           reglements: (cmd.reglements || []).map((reg) => ({
+  //             id_reglement: reg.id_reglement,
+  //             montant: reg.montant,
+  //             date: reg.date,
+  //           })),
+  //         })),
+  //       };
+  //     });
+
+  //     console.log('Clients with details:', JSON.stringify(result, null, 2));
+  //     return result;
+  //   } catch (error) {
+  //     console.error(
+  //       'findAllWithDetails query failed:',
+  //       JSON.stringify(error, null, 2),
+  //     );
+  //     throw new InternalServerErrorException(
+  //       `Failed to execute findAllWithDetails query: ${error.message}`,
+  //     );
+  //   }
+  // }
+
   async findAll(searchTerm?: string): Promise<Client[]> {
     console.log('findAll called with:', { searchTerm });
     const queryBuilder = this.clientRepository
