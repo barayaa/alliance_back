@@ -10,6 +10,7 @@ import {
   BadRequestException,
   Res,
   ParseIntPipe,
+  ValidationPipe,
 } from '@nestjs/common';
 import { ClientInvoice, CommandeVenteService } from './commande_vente.service';
 import { CreateCommandeVenteDto } from './dto/create-commande_vente.dto';
@@ -21,6 +22,7 @@ import { Response } from 'express';
 import * as ExcelJS from 'exceljs';
 import { Auth } from 'src/auth/decorators/auth.decorators';
 import { AuthType } from 'src/auth/enums/auth.types.enum';
+import { GetUnpaidInvoicesDto } from './dto/invoice-unpaid.dto';
 
 interface ProductSalesHistory {
   id_facture: number;
@@ -46,6 +48,18 @@ class DateRangeDto {
 export class CommandeVenteController {
   constructor(private readonly commandeVenteService: CommandeVenteService) {}
 
+  @Get('unpaid-facture')
+  async getUnpaidFacture(
+    @Query(
+      new ValidationPipe({
+        transform: true,
+        transformOptions: { enableImplicitConversion: true },
+      }),
+    )
+    dto: GetUnpaidInvoicesDto,
+  ) {
+    return this.commandeVenteService.getUnpaidInvoices(dto);
+  }
   @Get('product-sales-history')
   async getProductSalesHistory(
     @Query('id_produit', ParseIntPipe) id_produit: number,

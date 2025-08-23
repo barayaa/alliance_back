@@ -12,10 +12,11 @@ import { APP_GUARD } from '@nestjs/core';
 import { AuthenticationGuard } from './guards/authentication/authentication.guard';
 import { RolesGuard } from './guards/roles/roles.guard';
 import { AccessTokenGuard } from './guards/access-token/access-token.guard';
+import { Client } from 'src/client/client.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([User]),
+    TypeOrmModule.forFeature([User, Client]),
     JwtModule.registerAsync(jwtConfig.asProvider()),
     ConfigModule.forFeature(jwtConfig),
   ],

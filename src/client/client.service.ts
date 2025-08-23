@@ -376,6 +376,7 @@ export class ClientService {
       worksheet.columns = [
         { header: 'Nom', key: 'nom', width: 30 },
         { header: 'Adresse', key: 'adresse', width: 30 },
+        { header: 'Nif', key: 'nif', width: 20 },
         { header: 'Numéro de téléphone', key: 'telephone', width: 20 },
       ];
 
@@ -392,7 +393,12 @@ export class ClientService {
         fgColor: { argb: 'FFE0F7FA' },
       };
 
-      worksheet.getRow(2).values = ['Nom', 'Adresse', 'Numéro de téléphone'];
+      worksheet.getRow(2).values = [
+        'Nom',
+        'Adresse',
+        'Nif',
+        'Numéro de téléphone',
+      ];
 
       worksheet.getRow(2).eachCell((cell) => {
         cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
@@ -414,6 +420,7 @@ export class ClientService {
         worksheet.addRow({
           nom: client.nom || '',
           adresse: client.adresse || '',
+          nif: client.nif || '',
           telephone: client.telephone || '',
         });
       });

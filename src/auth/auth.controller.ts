@@ -16,10 +16,17 @@ import { SignupDto } from './dto/sign-up.dto';
 import { Auth } from './decorators/auth.decorators';
 import { SignInDto } from './dto/sign-in.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
+import { SignInClientDto } from './dto/client-sign-in.dto';
 
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
+
+  @Auth(AuthType.None)
+  @Post('client/signin')
+  async signInClient(@Body() signInClientDto: SignInClientDto) {
+    return this.authService.signInClient(signInClientDto);
+  }
 
   @Post('signup')
   @Auth(AuthType.None)

@@ -27,6 +27,7 @@ import { CreateLignesCommandeVenteDto } from '../lignes_commande_vente/dto/creat
 import { MMvtStock } from 'src/m_mvt_stock/m_mvt_stock.entity';
 import { CaptureStockService } from 'src/capture_stock/capture_stock.service';
 import { Log } from 'src/log/log.entity';
+import { GetUnpaidInvoicesDto } from './dto/invoice-unpaid.dto';
 
 interface InvoiceLine {
   designation: string;
@@ -1601,5 +1602,56 @@ export class CommandeVenteService {
       id: Number(row.id || 0),
       name: row.name || 'Inconnu',
     }));
+  }
+
+  // Dans CommandeVenteService
+  async getUnpaidInvoices(dto: GetUnpaidInvoicesDto) {
+    const { id_client, date_debut, date_fin } = dto;
+
+    if (!id_client) {
+      throw new BadRequestException("L'ID du client est requis");
+    }
+
+    // Construire la requête
+    const query = this.commandeVenteRepository
+      .createQueryBuilder('commande')
+      .where('commande.id_client = :id_client', { id_client })
+      .andWhere('commande.reglee = :reglee', { reglee: 0 }); // Factures non réglées
+
+    // Ajouter le filtre par dates si fourni
+    if (date_debut && date_fin) {
+      query.andWhere(
+        'commande.date_commande_vente BETWEEN :date_debut AND :date_fin',
+        {
+          date_debut,
+          date_fin,
+        },
+      );
+    } else if (date_debut) {
+      query.andWhere('commande.date_commande_vente >= :date_debut', {
+        date_debut,
+      });
+    } else if (date_fin) {
+      query.andWhere('commande.date_commande_vente <= :date_fin', { date_fin });
+    }
+
+    // Récupérer les factures avec les relations nécessaires
+    const invoices = await query
+      .leftJoinAndSelect('commande.client', 'client')
+      .select([
+        'commande.id_commande_vente',
+        'commande.numero_facture_certifiee',
+        'commande.date_commande_vente',
+        'commande.montant_total',
+        'commande.montant_paye',
+        'commande.montant_restant',
+        'commande.reglee',
+        'client.nom',
+        'client.prenom',
+      ])
+      .orderBy('commande.date_commande_vente', 'DESC')
+      .getMany();
+
+    return invoices;
   }
 }

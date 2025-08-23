@@ -15,6 +15,8 @@ import jwtConfig from './config/jwt.config';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { SignupDto } from './dto/sign-up.dto';
 import { SignInDto } from './dto/sign-in.dto';
+import { Client } from 'src/client/client.entity';
+import { SignInClientDto } from './dto/client-sign-in.dto';
 
 @Injectable()
 export class AuthService {
@@ -24,6 +26,9 @@ export class AuthService {
     private readonly jwtService: JwtService,
     @Inject(jwtConfig.KEY)
     private readonly jwtConffigutation: ConfigType<typeof jwtConfig>,
+
+    @InjectRepository(Client)
+    private readonly clientRepository: Repository<Client>,
   ) {}
 
   async signUp(signUpDto: SignupDto) {
@@ -137,5 +142,64 @@ export class AuthService {
     );
     await this.userRepository.save(user);
     return { message: 'Mot de passe modifié avec succès' };
+  }
+
+  async signInClient(signInClientDto: SignInClientDto) {
+    // Vérifier que l'email ou le login est fourni
+    if (!signInClientDto.email && !signInClientDto.login) {
+      throw new BadRequestException(
+        'Vous devez fournir soit un email, soit un login',
+      );
+    }
+
+    // Rechercher le client par email ou login
+    const client = await this.clientRepository
+      .createQueryBuilder('client')
+      .where('client.email = :email OR client.login = :login', {
+        email: signInClientDto.email || null,
+        login: signInClientDto.login || null,
+      })
+      .getOneOrFail()
+      .catch(() => {
+        throw new UnauthorizedException("Le client n'existe pas");
+      });
+
+    if (!client) {
+      throw new UnauthorizedException("Le client n'existe pas");
+    }
+
+    // Vérifier le mot de passe
+    const isEqual = await this.hasshingService.compare(
+      signInClientDto.password,
+      client.password,
+    );
+
+    if (!isEqual) {
+      throw new UnauthorizedException('Mot de passe incorrect');
+    }
+
+    // Générer le token JWT avec les infos du client
+    const accessToken = await this.jwtService.signAsync(
+      {
+        id: client.id_client,
+        email: client.email,
+        nom: client.nom,
+        prenom: client.prenom,
+        nif: client.nif,
+        avance: client.avance,
+        solde: client.solde,
+        type: 'client',
+      },
+      {
+        audience: this.jwtConffigutation.audience,
+        issuer: this.jwtConffigutation.issuer,
+        secret: this.jwtConffigutation.secret,
+        expiresIn: this.jwtConffigutation.accessTokenTtl,
+      },
+    );
+
+    return {
+      accessToken,
+    };
   }
 }
