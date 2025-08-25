@@ -63,7 +63,7 @@ export class Proformat {
   @Column({ type: 'int' })
   avoir: number;
 
-  @Column({ type: 'varchar', length: 15 })
+  @Column({ type: 'varchar', length: 60 })
   login: string;
 
   @Column({ type: 'varchar', length: 4 })

@@ -103,6 +103,7 @@ export class AuthService {
         prenom: user.prenom,
         poste: user.poste,
         role: user.role,
+        type: 'user',
       },
       {
         audience: this.jwtConffigutation.audience,

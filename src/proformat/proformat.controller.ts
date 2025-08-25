@@ -20,14 +20,19 @@ import { Response } from 'express';
 export class ProformatController {
   constructor(private readonly proformatService: ProformatService) {}
 
-  // @Post('cancel/:id')
-  // async cancel(@Param('id') id: string): Promise<void> {
-  //   const idNumber = parseInt(id, 10);
-  //   if (isNaN(idNumber)) {
-  //     throw new BadRequestException('ID invalide');
-  //   }
-  //   return this.proformatService.cancel(idNumber);
-  // }
+  @Get('client/:id_client')
+  async findByclient(
+    @Param('id_client') id_client: number,
+  ): Promise<Proformat[]> {
+    return this.proformatService.findByclient(id_client);
+  }
+
+  @Post('create-by-client') async createProformatByclient(
+    @Body() createDto: CreateProformatDto,
+    @Body('user') user: { id_client: number; login: string },
+  ): Promise<Proformat> {
+    return this.proformatService.createByclient(createDto, user);
+  }
 
   @Post(':id/convert-to-commande-vente')
   async convertToCommandeVente(

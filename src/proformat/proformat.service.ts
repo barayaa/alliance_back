@@ -79,6 +79,14 @@ export class ProformatService {
     }
   }
 
+  findByclient(id_client: number): Promise<Proformat[]> {
+    return this.proformatRepository.find({
+      where: { id_client },
+      relations: ['client', 'lignes'],
+      order: { date_commande_vente: 'DESC' },
+    });
+  }
+
   async findOne(id: number): Promise<Proformat> {
     if (!id || isNaN(id)) {
       throw new BadRequestException('ID invalide');
@@ -237,6 +245,173 @@ export class ProformatService {
           log: `Enregistrement de la facture proformat N° ${savedProformat.id_commande_vente}`,
           date: new Date(),
           user: dto.login || 'Utilisateur inconnu',
+          archive: 1,
+        });
+        await manager.save(Log, logEntry);
+
+        return savedProformat;
+      } catch (error) {
+        console.error(
+          'Erreur dans la transaction:',
+          JSON.stringify(error, null, 2),
+        );
+        throw error;
+      }
+    });
+  }
+
+  async createByclient(
+    dto: CreateProformatDto,
+    user: { id_client: number; login: string },
+  ): Promise<Proformat> {
+    console.log(dto);
+
+    return this.proformatRepository.manager.transaction(async (manager) => {
+      try {
+        // Validate that the client exists and matches the logged-in user
+        const client = await manager.findOneBy(Client, {
+          id_client: user.id_client,
+        });
+        if (!client) {
+          throw new BadRequestException(
+            `Client avec id ${user.id_client} non trouvé`,
+          );
+        }
+
+        // Ensure the DTO's id_client matches the logged-in client's ID
+        if (dto.id_client !== user.id_client) {
+          throw new BadRequestException(
+            'Vous ne pouvez créer une facture proforma que pour vous-même.',
+          );
+        }
+
+        const currentYear = new Date().getFullYear();
+        const lastProformat = await manager.findOne(Proformat, {
+          where: {
+            type_facture: 'PR',
+            numero_facture_certifiee: Like(`%-${currentYear}`),
+          },
+          order: { numero_seq: 'DESC' },
+        });
+        const numero_seq = lastProformat ? lastProformat.numero_seq + 1 : 1;
+        const numero_facture_certifiee = `${numero_seq.toString().padStart(4, '0')}-${currentYear}`;
+
+        let subtotal = 0;
+        let montant_tva = 0;
+        let isb_total = 0;
+        const lignesToSave = [];
+
+        for (const ligne of dto.lignes) {
+          const produit = await manager.findOneBy(Produit, {
+            id_produit: ligne.designation,
+          });
+          if (!produit) {
+            throw new BadRequestException(
+              `Produit avec id ${ligne.designation} non trouvé`,
+            );
+          }
+          const prix_vente = ligne.prix_vente || produit.prix_unitaire;
+          const remise = ligne.remise || 0;
+          const montant_ligne = prix_vente * ligne.quantite * (1 - remise);
+          const taux_tva = ligne.taux_tva || produit.taux_tva || 0;
+          const montant_tva_ligne = montant_ligne * (taux_tva / 100);
+          const isb_ligne = ligne.isb_ligne || montant_ligne * 0.02; // ISB par défaut à 2%
+          subtotal += montant_ligne;
+          montant_tva += montant_tva_ligne;
+          isb_total += isb_ligne;
+
+          lignesToSave.push({
+            id_commande_vente: numero_facture_certifiee, // Temporaire, corrigé plus bas
+            designation: ligne.designation,
+            prix_vente,
+            remise,
+            description_remise: ligne.description_remise || '',
+            prix_vente_avant_remise: (
+              ligne.prix_vente_avant_remise || prix_vente
+            ).toString(),
+            quantite: ligne.quantite,
+            montant: montant_ligne,
+            group_tva: ligne.group_tva || produit.group_tva || '',
+            etiquette_tva: ligne.etiquette_tva || produit.etiquette_tva || '',
+            taux_tva,
+            montant_tva: montant_tva_ligne,
+            isb_ligne,
+            date: dto.date_commande_vente,
+            stock_avant: produit.stock_courant,
+            stock_apres: produit.stock_courant, // Pas de modification du stock pour proforma
+            retour: 0,
+            statut_proformat: 0,
+          });
+        }
+
+        const montant_total =
+          subtotal + montant_tva + isb_total - (dto.remise || 0);
+
+        const proformat = manager.create(Proformat, {
+          date_commande_vente: new Date(dto.date_commande_vente),
+          montant_total,
+          montant_paye: 0,
+          montant_restant: montant_total,
+          remise: dto.remise || 0,
+          validee: 1,
+          statut: 0,
+          id_client: user.id_client,
+          client,
+          reglee: 0,
+          moyen_reglement: 0,
+          type_reglement: dto.type_reglement || 'E',
+          tva: montant_tva,
+          type_isb: dto.type_isb || 'A',
+          isb: isb_total,
+          avoir: 0,
+          login: user.login, // Use the logged-in client's login
+          type_facture: 'PR',
+          reponse_mcf: '',
+          qrcode: '',
+          client_vd: dto.client_vd || null,
+          nif_vd: dto.nif_vd || null,
+          adresse_vd: dto.adresse_vd || null,
+          telephone_vd: dto.telephone_vd || null,
+          email_vd: dto.email_vd || null,
+          ville_vd: dto.ville_vd || null,
+          commentaire1: dto.commentaire1 || null,
+          commentaire2: dto.commentaire2 || null,
+          commentaire3: dto.commentaire3 || null,
+          commentaire4: dto.commentaire4 || null,
+          commentaire5: dto.commentaire5 || null,
+          commentaire6: dto.commentaire6 || null,
+          commentaire7: dto.commentaire7 || null,
+          commentaire8: dto.commentaire8 || null,
+          certifiee: 'NON',
+          numero_seq,
+          numero_facture_certifiee,
+          imprimee: 0,
+          statut_proformat: 0,
+          facture_definitive: 'Non',
+        });
+
+        const savedProformat = await manager.save(Proformat, proformat);
+
+        // Initialize lignes if necessary
+        if (!savedProformat.lignes) {
+          savedProformat.lignes = [];
+        }
+
+        for (const ligne of lignesToSave) {
+          const ligneEntity = manager.create(LignesProformat, {
+            ...ligne,
+            id_commande_vente: savedProformat.id_commande_vente, // Use the numeric ID
+          });
+          await manager.save(LignesProformat, ligneEntity);
+          savedProformat.lignes.push(ligneEntity);
+        }
+
+        savedProformat.client = client;
+
+        const logEntry = manager.create(Log, {
+          log: `Enregistrement de la facture proformat N° ${savedProformat.id_commande_vente} par le client ${user.login}`,
+          date: new Date(),
+          user: user.login,
           archive: 1,
         });
         await manager.save(Log, logEntry);
