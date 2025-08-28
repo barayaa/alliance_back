@@ -8,6 +8,7 @@ import {
 } from 'typeorm';
 import { Statut } from '../statut/statut.entity';
 import { CommandeVente } from '../commande_vente/commande_vente.entity';
+import { Avoir } from 'src/avoir/entities/avoir.entity';
 @Entity('client')
 export class Client {
   @PrimaryGeneratedColumn()
@@ -61,4 +62,7 @@ export class Client {
 
   @OneToMany(() => CommandeVente, (commandeVente) => commandeVente.client)
   commandesVente: CommandeVente[];
+
+  @OneToMany(() => Avoir, (avoir) => avoir.client)
+  avoirs: Avoir[];
 }

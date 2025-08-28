@@ -53,6 +53,8 @@ import { SuiviStockModule } from './suivi_stock/suivi_stock.module';
 import { BanquesModule } from './banques/banques.module';
 import { ComptesModule } from './comptes/comptes.module';
 import { CaisseModule } from './caisse/caisse.module';
+import { AvoirModule } from './avoir/avoir.module';
+import { LigneAvoirModule } from './ligne_avoir/ligne_avoir.module';
 
 @Module({
   imports: [
@@ -119,6 +121,8 @@ import { CaisseModule } from './caisse/caisse.module';
     BanquesModule,
     ComptesModule,
     CaisseModule,
+    AvoirModule,
+    LigneAvoirModule,
   ],
   controllers: [AppController],
   providers: [AppService],
