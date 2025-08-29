@@ -1654,4 +1654,172 @@ export class CommandeVenteService {
 
     return invoices;
   }
+
+  async exportUnpaidInvoicesToExcel(
+    dto: GetUnpaidInvoicesDto,
+    res: Response,
+  ): Promise<void> {
+    console.log('exportUnpaidInvoicesToExcel called with:', dto);
+
+    // Valider les entrées
+    if (!dto.id_client) {
+      console.error('ID client manquant:', dto);
+      throw new BadRequestException("L'ID du client est requis");
+    }
+
+    try {
+      // Récupérer les factures impayées
+      const invoices = await this.getUnpaidInvoices(dto);
+      console.log('Factures impayées récupérées:', invoices);
+
+      if (!invoices || invoices.length === 0) {
+        console.warn(
+          'Aucune facture impayée trouvée pour id_client:',
+          dto.id_client,
+        );
+        throw new NotFoundException('Aucune facture impayée trouvée');
+      }
+
+      // Créer un nouveau classeur Excel
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet('Factures Impayées', {
+        properties: { tabColor: { argb: 'FFFFC107' } }, // Couleur d'onglet jaune
+      });
+
+      // Définir les colonnes
+      worksheet.columns = [
+        { header: 'ID Facture', key: 'id_commande_vente', width: 15 },
+        {
+          header: 'Numéro Facture',
+          key: 'numero_facture_certifiee',
+          width: 20,
+        },
+        { header: 'Date', key: 'date_commande_vente', width: 20 },
+        { header: 'Client', key: 'client_nom', width: 30 },
+        { header: 'Montant Total (FCFA)', key: 'montant_total', width: 20 },
+        { header: 'Montant Payé (FCFA)', key: 'montant_paye', width: 20 },
+        { header: 'Montant Restant (FCFA)', key: 'montant_restant', width: 20 },
+      ];
+
+      // Ajouter un titre
+      worksheet.mergeCells('A1:G1');
+      const titleCell = worksheet.getCell('A1');
+      titleCell.value = `Factures Impayées - Client ID ${dto.id_client}`;
+      titleCell.font = { size: 16, bold: true };
+      titleCell.alignment = { vertical: 'middle', horizontal: 'center' };
+      titleCell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFE0F7FA' },
+      };
+
+      // Ajouter les en-têtes de colonnes
+      worksheet.getRow(2).values = [
+        'ID Facture',
+        'Numéro Facture',
+        'Date',
+        'Client',
+        'Montant Total (FCFA)',
+        'Montant Payé (FCFA)',
+        'Montant Restant (FCFA)',
+      ];
+
+      // Styliser les en-têtes
+      worksheet.getRow(2).eachCell((cell) => {
+        cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+        cell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FF1976D2' }, // Bleu foncé
+        };
+        cell.alignment = { vertical: 'middle', horizontal: 'center' };
+        cell.border = {
+          top: { style: 'thin' },
+          left: { style: 'thin' },
+          bottom: { style: 'thin' },
+          right: { style: 'thin' },
+        };
+      });
+
+      // Ajouter les données
+      invoices.forEach((invoice) => {
+        worksheet.addRow({
+          id_commande_vente: invoice.id_commande_vente,
+          numero_facture_certifiee: invoice.numero_facture_certifiee,
+          date_commande_vente: new Date(
+            invoice.date_commande_vente,
+          ).toLocaleDateString('fr-FR'),
+          client_nom:
+            `${invoice.client?.nom || 'Inconnu'} ${invoice.client?.prenom || ''}`.trim(),
+          montant_total: Number(invoice.montant_total || 0).toFixed(2),
+          montant_paye: Number(invoice.montant_paye || 0).toFixed(2),
+          montant_restant: Number(invoice.montant_restant || 0).toFixed(2),
+        });
+      });
+
+      // Styliser les lignes de données
+      worksheet.eachRow((row, rowNumber) => {
+        if (rowNumber > 2) {
+          // Ignorer le titre et les en-têtes
+          row.eachCell((cell) => {
+            cell.border = {
+              top: { style: 'thin' },
+              left: { style: 'thin' },
+              bottom: { style: 'thin' },
+              right: { style: 'thin' },
+            };
+            cell.alignment = { vertical: 'middle', horizontal: 'left' };
+          });
+        }
+      });
+
+      // Ajouter une ligne de total
+      const totalRow = worksheet.addRow({
+        id_commande_vente: '',
+        numero_facture_certifiee: '',
+        date_commande_vente: '',
+        client_nom: 'Total',
+        montant_total: invoices
+          .reduce((sum, inv) => sum + Number(inv.montant_total || 0), 0)
+          .toFixed(2),
+        montant_paye: invoices
+          .reduce((sum, inv) => sum + Number(inv.montant_paye || 0), 0)
+          .toFixed(2),
+        montant_restant: invoices
+          .reduce((sum, inv) => sum + Number(inv.montant_restant || 0), 0)
+          .toFixed(2),
+      });
+      totalRow.font = { bold: true };
+      totalRow.eachCell((cell) => {
+        cell.border = {
+          top: { style: 'thin' },
+          left: { style: 'thin' },
+          bottom: { style: 'thin' },
+          right: { style: 'thin' },
+        };
+        cell.alignment = { vertical: 'middle', horizontal: 'left' };
+      });
+
+      // Définir les en-têtes HTTP
+      res.setHeader(
+        'Content-Type',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      );
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename=factures_impayees_client_${dto.id_client}_${new Date().toISOString().split('T')[0]}.xlsx`,
+      );
+
+      // Écrire le fichier Excel dans la réponse
+      await workbook.xlsx.write(res);
+      res.end();
+
+      console.log('Exportation Excel terminée pour client ID:', dto.id_client);
+    } catch (error) {
+      console.error("Erreur lors de l'exportation Excel:", error);
+      throw new InternalServerErrorException(
+        `Erreur lors de l'exportation des factures impayées: ${error.message}`,
+      );
+    }
+  }
 }

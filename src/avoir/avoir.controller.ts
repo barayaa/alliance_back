@@ -25,4 +25,9 @@ export class AvoirController {
   async createAvoir(@Body() createAvoirDto: CreateAvoirDto) {
     return this.avoirService.createAvoir(createAvoirDto);
   }
+
+  @Get(':id')
+  findOne(@Body('id') id: number) {
+    return this.avoirService.findOne(id);
+  }
 }

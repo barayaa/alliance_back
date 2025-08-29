@@ -42,6 +42,18 @@ export class AvoirService {
       relations: {
         lignes: true,
         facture_vente: true,
+        client: true,
+      },
+    });
+  }
+
+  findOne(id: number) {
+    return this.avoirRepository.findOne({
+      where: { id_avoir: id },
+      relations: {
+        lignes: true,
+        facture_vente: true,
+        client: true,
       },
     });
   }

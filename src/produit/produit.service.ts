@@ -50,6 +50,16 @@ export class ProduitService {
     return this.findAll(searchTerm);
   }
 
+  async findOne(id: number): Promise<Produit> {
+    const entity = await this.produitRepository.findOne({
+      where: { id_produit: id },
+      select: ['id_produit', 'produit'], // Utiliser 'produit' au lieu de 'nom' conformément à l'entité
+    });
+    if (!entity)
+      throw new NotFoundException(`Produit avec ID ${id} non trouvé`);
+    return entity;
+  }
+
   // async findAll(): Promise<Produit[]> {
   //   return this.produitRepository.find({
   //     relations: {
@@ -68,23 +78,23 @@ export class ProduitService {
   //   });
   // }
 
-  async findOne(id: number): Promise<Produit> {
-    const entity = await this.produitRepository.findOne({
-      where: { id_produit: id },
-      relations: [
-        'marque',
-        'forme',
-        'voie_administration',
-        'classe_therapeutique',
-        'statut_produit',
-        'titulaire_amm',
-        'fabricant',
-        'lignescommandeventes',
-      ],
-    });
-    if (!entity) throw new NotFoundException('Produit not found');
-    return entity;
-  }
+  // async findOne(id: number): Promise<Produit> {
+  //   const entity = await this.produitRepository.findOne({
+  //     where: { id_produit: id },
+  //     relations: [
+  //       'marque',
+  //       'forme',
+  //       'voie_administration',
+  //       'classe_therapeutique',
+  //       'statut_produit',
+  //       'titulaire_amm',
+  //       'fabricant',
+  //       'lignescommandeventes',
+  //     ],
+  //   });
+  //   if (!entity) throw new NotFoundException('Produit not found');
+  //   return entity;
+  // }
 
   async create(dto: CreateProduitDto): Promise<Produit> {
     return;

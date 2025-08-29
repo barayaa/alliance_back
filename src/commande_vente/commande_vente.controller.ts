@@ -48,6 +48,13 @@ class DateRangeDto {
 export class CommandeVenteController {
   constructor(private readonly commandeVenteService: CommandeVenteService) {}
 
+  @Get('unpaid-invoices/export')
+  async exportUnpaidInvoices(
+    @Query() dto: GetUnpaidInvoicesDto,
+    @Res() res: Response,
+  ) {
+    await this.commandeVenteService.exportUnpaidInvoicesToExcel(dto, res);
+  }
   @Get('unpaid-facture')
   async getUnpaidFacture(
     @Query(
