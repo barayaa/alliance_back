@@ -19,6 +19,11 @@ import * as ExcelJS from 'exceljs';
 export class ProduitController {
   constructor(private readonly produitService: ProduitService) {}
 
+  @Get('expirant-dans-six-mois')
+  async getProduitsExpirantDansSixMois(): Promise<Produit[]> {
+    return this.produitService.getProduitsExpirantDansSixMois();
+  }
+
   // @Get('stock-movements')
   // async getStockMovements(@Query('date') date: string) {
   //   return this.produitService.getStockMovements(date);

@@ -10,6 +10,9 @@ export class CreateProduitDto {
   @IsString({})
   denomination_commune_internationale: string;
 
+  @IsNumber({})
+  prix_vente: number;
+
   @IsString({})
   dosage: string;
 

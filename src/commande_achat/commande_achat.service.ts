@@ -106,8 +106,10 @@ export class CommandeAchatService {
     if (!user) {
       throw new UnauthorizedException('Utilisateur non authentifié');
     }
+
     return await this.commande_achatRepository.manager.transaction(
       async (transactionalEntityManager) => {
+        // Vérification du fournisseur
         const fournisseur = await transactionalEntityManager.findOne(
           TitulaireAmm,
           {
@@ -119,6 +121,8 @@ export class CommandeAchatService {
             `Fournisseur avec l'ID ${dto.id_fournisseur} non trouvé`,
           );
         }
+
+        // Vérification de la destination
         const destination = await transactionalEntityManager.findOne(
           Destination,
           {
@@ -130,6 +134,8 @@ export class CommandeAchatService {
             `Destination avec l'ID ${dto.id_destination} non trouvée`,
           );
         }
+
+        // Calcul du montant total
         const montantTotal = dto.produits.reduce(
           (sum, produit) =>
             sum +
@@ -140,6 +146,8 @@ export class CommandeAchatService {
               : 0),
           0,
         );
+
+        // Création de la commande
         const commande = transactionalEntityManager.create(CommandeAchat, {
           date_commande_achat: new Date(dto.date_commande_achat),
           montant_total: montantTotal,
@@ -159,11 +167,16 @@ export class CommandeAchatService {
           titulaire_amm: fournisseur,
           destination,
         });
+
+        // Sauvegarde de la commande
         const savedCommande = await transactionalEntityManager.save(
           CommandeAchat,
           commande,
         );
+
+        // Création des lignes de commande et mise à jour des produits
         for (const produit of dto.produits) {
+          // Création de la ligne de commande
           await this.lignesCommandeAchatService.create(
             {
               ...produit,
@@ -175,11 +188,114 @@ export class CommandeAchatService {
             dto.id_destination,
             transactionalEntityManager,
           );
+
+          // Mise à jour du produit dans la table produit
+          const produitToUpdate = await transactionalEntityManager.findOne(
+            Produit,
+            {
+              where: { id_produit: produit.designation }, // Supposons que designation = id_produit
+            },
+          );
+
+          if (produitToUpdate) {
+            produitToUpdate.cle_titulaire_amm = dto.id_fournisseur;
+            produitToUpdate.validite_amm = produit.date_expiration;
+            produitToUpdate.pght = produit.pght;
+            produitToUpdate.prix_vente = produit.prix_vente;
+            await transactionalEntityManager.save(Produit, produitToUpdate);
+          } else {
+            throw new NotFoundException(
+              `Produit avec l'ID ${produit.designation} non trouvé`,
+            );
+          }
         }
+
         return savedCommande;
       },
     );
   }
+
+  // async create(
+  //   dto: CreateCommandeAchatDto,
+  //   user: User,
+  // ): Promise<CommandeAchat> {
+  //   if (!user) {
+  //     throw new UnauthorizedException('Utilisateur non authentifié');
+  //   }
+  //   return await this.commande_achatRepository.manager.transaction(
+  //     async (transactionalEntityManager) => {
+  //       const fournisseur = await transactionalEntityManager.findOne(
+  //         TitulaireAmm,
+  //         {
+  //           where: { id_titulaire_amm: dto.id_fournisseur },
+  //         },
+  //       );
+  //       if (!fournisseur) {
+  //         throw new NotFoundException(
+  //           `Fournisseur avec l'ID ${dto.id_fournisseur} non trouvé`,
+  //         );
+  //       }
+  //       const destination = await transactionalEntityManager.findOne(
+  //         Destination,
+  //         {
+  //           where: { id_destination: dto.id_destination },
+  //         },
+  //       );
+  //       if (!destination) {
+  //         throw new NotFoundException(
+  //           `Destination avec l'ID ${dto.id_destination} non trouvée`,
+  //         );
+  //       }
+  //       const montantTotal = dto.produits.reduce(
+  //         (sum, produit) =>
+  //           sum +
+  //           (produit.pu
+  //             ? produit.pu *
+  //               produit.quantite *
+  //               (1 - (produit.remise || 0) / 100)
+  //             : 0),
+  //         0,
+  //       );
+  //       const commande = transactionalEntityManager.create(CommandeAchat, {
+  //         date_commande_achat: new Date(dto.date_commande_achat),
+  //         montant_total: montantTotal,
+  //         montant_paye: dto.montant_paye || 0,
+  //         montant_restant: montantTotal - (dto.montant_paye || 0),
+  //         validee: dto.validee || 1,
+  //         statut: dto.statut || 0,
+  //         id_fournisseur: dto.id_fournisseur,
+  //         reglee: dto.reglee || 0,
+  //         moyen_reglement: dto.moyen_reglement || 0,
+  //         type_reglement: dto.type_reglement || 0,
+  //         tva: dto.tva || 0,
+  //         avoir: dto.avoir || 0,
+  //         reference: dto.reference,
+  //         user: user.nom,
+  //         id_destination: dto.id_destination,
+  //         titulaire_amm: fournisseur,
+  //         destination,
+  //       });
+  //       const savedCommande = await transactionalEntityManager.save(
+  //         CommandeAchat,
+  //         commande,
+  //       );
+  //       for (const produit of dto.produits) {
+  //         await this.lignesCommandeAchatService.create(
+  //           {
+  //             ...produit,
+  //             id_commande_achat: savedCommande.id_commande_achat,
+  //             date: new Date(dto.date_commande_achat),
+  //           },
+  //           user.nom,
+  //           savedCommande.reference,
+  //           dto.id_destination,
+  //           transactionalEntityManager,
+  //         );
+  //       }
+  //       return savedCommande;
+  //     },
+  //   );
+  // }
 
   async update(
     id: number,

@@ -286,18 +286,18 @@ export class CommandeVenteService {
       doc.pipe(res);
 
       // Ajouter le logo en arrière-plan (filigrane) sur toutes les pages
-      doc.on('pageAdded', () => {
-        try {
-          doc
-            .image('src/uploads/rmlogo.png', 150, 200, {
-              width: 300,
-              opacity: 0.1, // Faible opacité pour le filigrane
-            })
-            .restore();
-        } catch (error) {
-          console.warn('Logo de fond non trouvé, ignoré');
-        }
-      });
+      // doc.on('pageAdded', () => {
+      //   try {
+      //     doc
+      //       .image('src/uploads/rmlogo.png', 150, 200, {
+      //         width: 300,
+      //         opacity: 0.1, // Faible opacité pour le filigrane
+      //       })
+      //       .restore();
+      //   } catch (error) {
+      //     console.warn('Logo de fond non trouvé, ignoré');
+      //   }
+      // });
 
       if (type === 'full') {
         // Fonction pour afficher l'en-tête du tableau
@@ -1255,7 +1255,7 @@ export class CommandeVenteService {
   }
 
   async create(dto: CreateCommandeVenteDto): Promise<CommandeVente> {
-    console.log('Payload reçu:', JSON.stringify(dto, null, 2));
+    // console.log('Payload reçu:', JSON.stringify(dto, null, 2));
     return this.commandeVenteRepository.manager.transaction(async (manager) => {
       try {
         // Valider le client
@@ -1270,9 +1270,9 @@ export class CommandeVenteService {
 
         // Valider type_isb
         const isbs = await manager.find(Isb, { select: ['isb'] });
-        console.log('Données brutes de isb:', JSON.stringify(isbs, null, 2));
+        // console.log('Données brutes de isb:', JSON.stringify(isbs, null, 2));
         const validIsb = isbs.map((isb) => isb.isb.trim().toUpperCase());
-        console.log('Valeurs valides de type_isb (pourcentages):', validIsb);
+        // console.log('Valeurs valides de type_isb (pourcentages):', validIsb);
         const isbMapping: { [key: string]: string } = {
           A: '0%',
           C: '2%',

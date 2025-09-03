@@ -65,10 +65,7 @@ export class Avoir {
   login: string;
 
   @Column()
-  ref_ini: string; // Référence à la facture initiale (numero_facture_certifiee)
-
-  //   @ManyToOne(() => CommandeVente)
-  //   facture_vente: CommandeVente;
+  ref_ini: string;
 
   @ManyToOne(() => CommandeVente, { onDelete: 'RESTRICT' })
   @JoinColumn({

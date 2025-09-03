@@ -44,6 +44,9 @@ export class Produit {
   @Column({ type: 'varchar', length: 25 })
   validite_amm: string;
 
+  @Column('double', { default: 0 })
+  prix_vente: number;
+
   @Column({ type: 'double' })
   pght: number;
 

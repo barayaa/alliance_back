@@ -69,6 +69,14 @@ export class CreateLignesCommandeAchatDto {
   @IsOptional()
   date_expiration: string; // varchar(10) dans la table
 
+  @IsNumber()
+  @IsOptional()
+  prix_vente?: number;
+
+  @IsNumber()
+  @IsOptional()
+  pght?: number;
+
   @IsString()
   @IsOptional()
   conformite: string;

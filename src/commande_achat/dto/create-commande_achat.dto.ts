@@ -59,68 +59,68 @@ export class CreateCommandeAchatDto {
   @IsNumber()
   @IsOptional()
   avoir?: number;
-
-  // @IsDateString()
-  // @IsNotEmpty()
-  // date_commande_achat: string;
-
-  // @IsNumber()
-  // @IsOptional()
-  // montant_total: number;
-
-  // @IsNumber()
-  // @IsOptional()
-  // montant_paye: number;
-
-  // @IsNumber()
-  // @IsOptional()
-  // montant_restant: number;
-
-  // @IsNumber()
-  // @IsOptional()
-  // validee: number;
-
-  // @IsNumber()
-  // @IsOptional()
-  // statut: number;
-
-  // @IsNumber()
-  // @Min(1)
-  // @IsNotEmpty()
-  // id_fournisseur: number;
-
-  // @IsNumber()
-  // @IsOptional()
-  // reglee: number;
-
-  // @IsNumber()
-  // @IsNotEmpty()
-  // moyen_reglement: number;
-
-  // @IsNumber()
-  // @IsNotEmpty()
-  // type_reglement: number;
-
-  // @IsNumber()
-  // @IsOptional()
-  // tva: number;
-
-  // @IsNumber()
-  // @IsOptional()
-  // avoir: number;
-
-  // @IsString()
-  // @IsNotEmpty()
-  // reference: string;
-
-  // @IsNumber()
-  // @Min(1)
-  // @IsNotEmpty()
-  // id_destination: number;
-
-  // @IsArray()
-  // @ValidateNested({ each: true })
-  // @Type(() => CreateLignesCommandeAchatDto)
-  // @IsNotEmpty()
-  // produits: CreateLignesCommandeAchatDto[];
 }
+
+// @IsDateString()
+// @IsNotEmpty()
+// date_commande_achat: string;
+
+// @IsNumber()
+// @IsOptional()
+// montant_total: number;
+
+// @IsNumber()
+// @IsOptional()
+// montant_paye: number;
+
+// @IsNumber()
+// @IsOptional()
+// montant_restant: number;
+
+// @IsNumber()
+// @IsOptional()
+// validee: number;
+
+// @IsNumber()
+// @IsOptional()
+// statut: number;
+
+// @IsNumber()
+// @Min(1)
+// @IsNotEmpty()
+// id_fournisseur: number;
+
+// @IsNumber()
+// @IsOptional()
+// reglee: number;
+
+// @IsNumber()
+// @IsNotEmpty()
+// moyen_reglement: number;
+
+// @IsNumber()
+// @IsNotEmpty()
+// type_reglement: number;
+
+// @IsNumber()
+// @IsOptional()
+// tva: number;
+
+// @IsNumber()
+// @IsOptional()
+// avoir: number;
+
+// @IsString()
+// @IsNotEmpty()
+// reference: string;
+
+// @IsNumber()
+// @Min(1)
+// @IsNotEmpty()
+// id_destination: number;
+
+// @IsArray()
+// @ValidateNested({ each: true })
+// @Type(() => CreateLignesCommandeAchatDto)
+// @IsNotEmpty()
+// produits: CreateLignesCommandeAchatDto[];
