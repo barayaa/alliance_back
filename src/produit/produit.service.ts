@@ -115,42 +115,33 @@ export class ProduitService {
       .getMany();
   }
 
-  // async getProduitsExpirantDansSixMois(): Promise<Produit[]> {
-  //   const aujourdHui = new Date();
-  //   const dansSixMois = new Date();
-  //   dansSixMois.setMonth(aujourdHui.getMonth() + 6);
+  async getProduitsPerimes(): Promise<Produit[]> {
+    const aujourdHui = new Date();
 
-  //   const formatDate = (date: Date): string => {
-  //     const year = date.getFullYear();
-  //     const month = String(date.getMonth() + 1).padStart(2, '0');
-  //     const day = String(date.getDate()).padStart(2, '0');
-  //     return `${day}/${month}/${year}`;
-  //   };
+    const formatDate = (date: Date): string => {
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      return `${day}/${month}/${year}`;
+    };
 
-  //   const dateDebut = formatDate(aujourdHui); // Ex. : 03/09/2025
-  //   const dateFin = formatDate(dansSixMois); // Ex. : 03/03/2026
+    const dateActuelle = formatDate(aujourdHui);
 
-  //   console.log('Date début:', dateDebut);
-  //   console.log('Date fin:', dateFin);
-
-  //   return await this.produitRepository
-  //     .createQueryBuilder('produit')
-  //     .leftJoinAndSelect('produit.marque', 'marque')
-  //     .leftJoinAndSelect('produit.forme', 'forme')
-  //     .leftJoinAndSelect('produit.voie_administration', 'voie_administration')
-  //     .leftJoinAndSelect('produit.classe_therapeutique', 'classe_therapeutique')
-  //     .leftJoinAndSelect('produit.statut_produit', 'statut_produit')
-  //     .leftJoinAndSelect('produit.titulaire_amm', 'titulaire_amm')
-  //     .leftJoinAndSelect('produit.fabricant', 'fabricant')
-  //     .where(
-  //       'STR_TO_DATE(produit.validite_amm, "%d/%m/%Y") >= STR_TO_DATE(:dateDebut, "%d/%m/%Y")',
-  //       { dateDebut },
-  //     )
-  //     .andWhere(
-  //       'STR_TO_DATE(produit.validite_amm, "%d/%m/%Y") <= STR_TO_DATE(:dateFin, "%d/%m/%Y")',
-  //       { dateFin },
-  //     )
-  //     .orderBy('STR_TO_DATE(produit.validite_amm, "%d/%m/%Y")', 'ASC')
-  //     .getMany();
-  // }
+    return await this.produitRepository
+      .createQueryBuilder('produit')
+      .leftJoinAndSelect('produit.marque', 'marque')
+      .leftJoinAndSelect('produit.forme', 'forme')
+      .leftJoinAndSelect('produit.voie_administration', 'voie_administration')
+      .leftJoinAndSelect('produit.classe_therapeutique', 'classe_therapeutique')
+      .leftJoinAndSelect('produit.statut_produit', 'statut_produit')
+      .leftJoinAndSelect('produit.titulaire_amm', 'titulaire_amm')
+      .leftJoinAndSelect('produit.fabricant', 'fabricant')
+      .where(
+        'STR_TO_DATE(produit.validite_amm, "%d/%m/%Y") <= STR_TO_DATE(:dateActuelle, "%d/%m/%Y")',
+        { dateActuelle },
+      )
+      .andWhere('produit.validite_amm IS NOT NULL')
+      .orderBy('STR_TO_DATE(produit.validite_amm, "%d/%m/%Y")', 'ASC')
+      .getMany();
+  }
 }
