@@ -55,7 +55,10 @@ import { ComptesModule } from './comptes/comptes.module';
 import { CaisseModule } from './caisse/caisse.module';
 import { AvoirModule } from './avoir/avoir.module';
 import { LigneAvoirModule } from './ligne_avoir/ligne_avoir.module';
-
+import { DirectionModule } from './direction/direction.module';
+import { PostesModule } from './postes/postes.module';
+import { MenuModule } from './menu/menu.module';
+import { DataSource } from 'typeorm';
 @Module({
   imports: [
     ConfigModule.forRoot({}),
@@ -123,6 +126,9 @@ import { LigneAvoirModule } from './ligne_avoir/ligne_avoir.module';
     CaisseModule,
     AvoirModule,
     LigneAvoirModule,
+    DirectionModule,
+    PostesModule,
+    MenuModule,
   ],
   controllers: [AppController],
   providers: [AppService],

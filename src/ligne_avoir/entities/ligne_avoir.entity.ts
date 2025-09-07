@@ -61,7 +61,7 @@ export class LigneAvoir {
   isb_ligne: number;
 
   @Column()
-  date: string;
+  date: Date;
 
   @Column()
   stock_avant: number;

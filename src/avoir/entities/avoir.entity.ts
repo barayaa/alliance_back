@@ -15,7 +15,7 @@ export class Avoir {
   @PrimaryGeneratedColumn()
   id_avoir: number;
 
-  @Column()
+  @Column({ nullable: true })
   date_avoir: Date;
 
   @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })

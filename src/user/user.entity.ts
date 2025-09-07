@@ -46,14 +46,14 @@ export class User {
   @Column({ type: 'varchar', length: 25 })
   telephone: string;
 
-  @Column({ type: 'int' })
-  id_fonction: number;
+  // @Column({ type: 'int' })
+  // id_fonction: number;
 
-  @Column({ type: 'int' })
-  id_departement: number;
+  // @Column({ type: 'int' })
+  // id_departement: number;
 
-  @Column({ type: 'int' })
-  id_service: number;
+  // @Column({ type: 'int' })
+  // id_service: number;
 
   @Column({ type: 'int' })
   id_direction: number;

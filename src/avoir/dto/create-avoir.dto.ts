@@ -1,7 +1,7 @@
 export class CreateAvoirDto {
   id_facture_vente: number;
   id_client: number;
-  date_avoir?: string;
+  date_avoir?: Date;
   remise?: number;
   type_isb: string;
   login: string;
