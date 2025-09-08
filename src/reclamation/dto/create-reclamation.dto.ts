@@ -14,9 +14,8 @@ export class CreateReclamationDto {
   numero_facture: number;
 
   @IsNumber({})
-  date: number;
+  date: Date;
 
   @IsNumber({})
   cle_nature_reclamation: number;
-
 }

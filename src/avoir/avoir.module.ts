@@ -28,5 +28,6 @@ import { CaptureStockModule } from 'src/capture_stock/capture_stock.module';
   ],
   controllers: [AvoirController],
   providers: [AvoirService],
+  exports: [AvoirService],
 })
 export class AvoirModule {}
