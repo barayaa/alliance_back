@@ -40,11 +40,6 @@ export class AuthService {
       user.telephone = signUpDto.telephone;
       user.login = signUpDto.login;
       user.password_status = signUpDto.password_status;
-      user.profil = 0;
-      // user.id_fonction = signUpDto.id_fonction;
-      // user.id_departement = signUpDto.id_departement;
-      // user.id_service = signUpDto.id_service;
-      user.id_direction = signUpDto.id_direction;
       user.poste = signUpDto.poste;
       user.password = await this.hasshingService.hash(signUpDto.password);
       user.role = signUpDto.role;

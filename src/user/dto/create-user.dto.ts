@@ -27,19 +27,4 @@ export class CreateUserDto {
 
   @IsNumber({})
   password_status?: number;
-
-  @IsNumber({})
-  profil?: number;
-
-  @IsNumber({})
-  id_fonction?: number;
-
-  @IsNumber({})
-  id_departement?: number;
-
-  @IsNumber({})
-  id_service?: number;
-
-  @IsNumber({})
-  id_direction?: number;
 }

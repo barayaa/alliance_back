@@ -27,7 +27,7 @@ export class User {
   @Column({ type: 'varchar', length: 225 })
   password: string;
 
-  @Column({ type: 'int' })
+  @Column({ type: 'int', nullable: true })
   password_status?: number;
 
   @Column({ type: 'int' })
@@ -45,16 +45,4 @@ export class User {
 
   @Column({ type: 'varchar', length: 25 })
   telephone: string;
-
-  // @Column({ type: 'int' })
-  // id_fonction: number;
-
-  // @Column({ type: 'int' })
-  // id_departement: number;
-
-  // @Column({ type: 'int' })
-  // id_service: number;
-
-  @Column({ type: 'int' })
-  id_direction: number;
 }
