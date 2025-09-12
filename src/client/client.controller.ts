@@ -8,6 +8,8 @@ import {
   Body,
   Query,
   Res,
+  HttpException,
+  HttpStatus,
 } from '@nestjs/common';
 import { ClientService } from './client.service';
 import { CreateClientDto } from './dto/create-client.dto';
@@ -18,6 +20,17 @@ import { Response } from 'express';
 @Controller('client')
 export class ClientController {
   constructor(private readonly clientService: ClientService) {}
+
+  @Get('count')
+  async getTotalClients(
+    @Query() dto: { date_debut?: string; date_fin?: string },
+  ) {
+    try {
+      return await this.clientService.getTotalClients(dto);
+    } catch (error) {
+      throw new HttpException(error.message, HttpStatus.BAD_REQUEST);
+    }
+  }
 
   @Get('with-details')
   async findAllWithDetails() {

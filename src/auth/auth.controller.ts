@@ -30,7 +30,7 @@ export class AuthController {
 
   @Post('signup')
   @Auth(AuthType.None)
-  @Post('sign-up')
+  // @Post('sign-up')
   signup(@Body() signUpDto: SignupDto) {
     return this.authService.signUp(signUpDto);
   }

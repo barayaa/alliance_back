@@ -4,8 +4,10 @@ import {
   PrimaryGeneratedColumn,
   ManyToOne,
   OneToMany,
+  JoinColumn,
 } from 'typeorm';
 import { Role } from './enums/role.enum';
+import { Poste } from 'src/postes/entities/poste.entity';
 
 @Entity('user')
 export class User {
@@ -27,14 +29,18 @@ export class User {
   @Column({ type: 'varchar', length: 225 })
   password: string;
 
-  @Column({ type: 'int', nullable: true })
-  password_status?: number;
+  // @Column({ type: 'int', nullable: true })
+  // password_status?: number;
 
-  @Column({ type: 'int' })
+  @Column({ type: 'int', nullable: true })
   profil: number;
 
-  @Column({ type: 'varchar', length: 25 })
-  poste: string;
+  @Column({ type: 'int', name: 'poste', nullable: true })
+  poste: number;
+
+  @ManyToOne(() => Poste, (poste) => poste.users, { nullable: true })
+  @JoinColumn({ name: 'poste' }) // Lier explicitement à la colonne poste
+  posteEntity: Poste;
 
   @Column({
     type: 'enum',

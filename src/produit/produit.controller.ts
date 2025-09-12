@@ -8,6 +8,8 @@ import {
   Body,
   Query,
   Res,
+  HttpException,
+  HttpStatus,
 } from '@nestjs/common';
 import { ProduitService } from './produit.service';
 import { CreateProduitDto } from './dto/create-produit.dto';
@@ -18,6 +20,28 @@ import * as ExcelJS from 'exceljs';
 @Controller('produit')
 export class ProduitController {
   constructor(private readonly produitService: ProduitService) {}
+
+  @Get('stock-value')
+  async getStockValue(
+    @Query() dto: { date_debut?: string; date_fin?: string },
+  ): Promise<number> {
+    try {
+      return await this.produitService.getStockValue(dto);
+    } catch (error) {
+      throw new HttpException(error.message, HttpStatus.BAD_REQUEST);
+    }
+  }
+
+  @Get('stock-by-product')
+  async getStockByProduct(
+    @Query() dto: { date_debut?: string; date_fin?: string },
+  ): Promise<{ produit: string; quantite: number }[]> {
+    try {
+      return await this.produitService.getStockByProduct(dto);
+    } catch (error) {
+      throw new HttpException(error.message, HttpStatus.BAD_REQUEST);
+    }
+  }
 
   @Get('perimes')
   getProduitsPerimes(): Promise<Produit[]> {

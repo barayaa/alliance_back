@@ -1,11 +1,13 @@
 import { Direction } from 'src/direction/entities/direction.entity';
 import { Menu } from 'src/menu/entities/menu.entity';
+import { User } from 'src/user/user.entity';
 import {
   Column,
   Entity,
   JoinTable,
   ManyToMany,
   ManyToOne,
+  OneToMany,
   PrimaryGeneratedColumn,
 } from 'typeorm';
 
@@ -25,4 +27,7 @@ export class Poste {
   @ManyToMany(() => Menu, (menu) => menu.postes)
   @JoinTable()
   menus: Menu[];
+
+  @OneToMany(() => User, (user) => user.poste)
+  users: User[];
 }

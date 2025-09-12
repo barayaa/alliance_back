@@ -13,21 +13,21 @@ export class SignupDto {
   @IsString({})
   login: string;
   @IsString()
-  poste: string;
+  poste: any;
   @IsString()
   role: Role;
-  @IsString()
-  departement: string;
+  // @IsString()
+  // departement: string;
   @MinLength(6)
   password: string;
-  @IsNumber()
-  password_status: number;
-  @IsNumber()
-  id_fonction: number | null;
-  @IsNumber()
-  id_departement: number | null;
-  @IsNumber()
-  id_service: number | null;
-  @IsNumber()
-  id_direction: number | null;
+  // @IsNumber()
+  // password_status: number;
+  // @IsNumber()
+  // id_fonction: number | null;
+  // @IsNumber()
+  // id_departement: number | null;
+  // @IsNumber()
+  // id_service: number | null;
+  // @IsNumber()
+  // id_direction: number | null;
 }

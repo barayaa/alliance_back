@@ -1,9 +1,11 @@
 import { Banque } from 'src/banques/entities/banque.entity';
+import { Depense } from 'src/depense/entities/depense.entity';
 import {
   Column,
   Entity,
   JoinColumn,
   ManyToOne,
+  OneToMany,
   PrimaryGeneratedColumn,
 } from 'typeorm';
 
@@ -21,6 +23,9 @@ export class Compte {
 
   @Column({ type: 'double', default: 0 })
   solde: number;
+
+  @OneToMany(() => Depense, (depense) => depense.compte)
+  depenses: Depense[];
 
   @Column({ type: 'varchar' })
   date_creation: string;

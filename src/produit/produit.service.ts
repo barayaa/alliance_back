@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  HttpException,
+  HttpStatus,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Produit } from './produit.entity';
@@ -143,5 +148,45 @@ export class ProduitService {
       .andWhere('produit.validite_amm IS NOT NULL')
       .orderBy('STR_TO_DATE(produit.validite_amm, "%d/%m/%Y")', 'ASC')
       .getMany();
+  }
+
+  async getStockValue(dto: {
+    date_debut?: string;
+    date_fin?: string;
+  }): Promise<number> {
+    try {
+      const produits = await this.produitRepository.find({
+        select: ['stock_courant', 'prix_unitaire'],
+      });
+      return produits.reduce(
+        (sum, p) => sum + (p.stock_courant || 0) * (p.prix_unitaire || 0),
+        0,
+      );
+    } catch (error) {
+      throw new HttpException(
+        'Erreur lors du calcul de la valeur du stock',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  async getStockByProduct(dto: {
+    date_debut?: string;
+    date_fin?: string;
+  }): Promise<{ produit: string; quantite: number }[]> {
+    try {
+      const produits = await this.produitRepository.find({
+        select: ['produit', 'stock_courant'],
+      });
+      return produits.map((p) => ({
+        produit: p.produit,
+        quantite: p.stock_courant || 0,
+      }));
+    } catch (error) {
+      throw new HttpException(
+        'Erreur lors de la récupération des stocks par produit',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
   }
 }

@@ -39,7 +39,7 @@ export class AuthService {
       user.email = signUpDto.email;
       user.telephone = signUpDto.telephone;
       user.login = signUpDto.login;
-      user.password_status = signUpDto.password_status;
+      // user.password_status = signUpDto.password_status;
       user.poste = signUpDto.poste;
       user.password = await this.hasshingService.hash(signUpDto.password);
       user.role = signUpDto.role;

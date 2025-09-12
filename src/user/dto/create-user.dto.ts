@@ -19,8 +19,8 @@ export class CreateUserDto {
   @IsString({})
   telephone: string;
 
-  @IsString({})
-  poste?: string;
+  @IsNumber({})
+  poste: number;
 
   @IsString({})
   role?: string;

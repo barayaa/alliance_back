@@ -545,4 +545,48 @@ export class ClientService {
     const entity = await this.findOne(id);
     await this.clientRepository.delete(entity);
   }
+
+  async getTotalClients(dto: {
+    date_debut?: string;
+    date_fin?: string;
+  }): Promise<number> {
+    const query = this.clientRepository
+      .createQueryBuilder('client')
+      .leftJoin('client.commandes_ventes', 'cv')
+      .where('1=1');
+
+    if (dto.date_debut && dto.date_fin) {
+      query.andWhere('cv.date BETWEEN :date_debut AND :date_fin', {
+        date_debut: dto.date_debut,
+        date_fin: dto.date_fin,
+      });
+    }
+
+    return query.distinct(true).getCount();
+  }
+
+  async getTopClients(
+    dto: { date_debut?: string; date_fin?: string },
+    limit: number = 5,
+  ): Promise<any[]> {
+    const query = this.commandeVenteRepository
+      .createQueryBuilder('cv')
+      .leftJoin('cv.client', 'client')
+      .select('client.id_client', 'id_client')
+      .addSelect('client.nom', 'nom')
+      .addSelect('client.prenom', 'prenom')
+      .addSelect('SUM(cv.montant_total)', 'totalMontant')
+      .groupBy('client.id_client')
+      .orderBy('totalMontant', 'DESC')
+      .limit(limit);
+
+    if (dto.date_debut && dto.date_fin) {
+      query.andWhere('cv.date BETWEEN :date_debut AND :date_fin', {
+        date_debut: dto.date_debut,
+        date_fin: dto.date_fin,
+      });
+    }
+
+    return query.getRawMany();
+  }
 }

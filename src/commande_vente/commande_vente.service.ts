@@ -1810,82 +1810,6 @@ export class CommandeVenteService {
     };
   }
 
-  // async getInvoicesByClient(
-  //   startDate: string,
-  //   endDate: string,
-  // ): Promise<{
-  //   data: ClientInvoice[];
-  //   periode: string;
-  // }> {
-  //   console.log('getInvoicesByClient called with:', { startDate, endDate });
-
-  //   const queryBuilder = this.commandeVenteRepository
-  //     .createQueryBuilder('cv')
-  //     .innerJoin('cv.lignes', 'lcv')
-  //     .leftJoin('produit', 'p', 'lcv.designation = p.id_produit')
-  //     .leftJoin('client', 'c', 'cv.id_client = c.id_client') // Changé de c.id à c.client_id
-  //     .select([
-  //       'COALESCE(c.nom, "Client Inconnu") AS client_nom',
-  //       'cv.id_commande_vente AS numero_commande',
-  //       'COALESCE(p.produit, lcv.designation) AS designation',
-  //       'lcv.quantite AS quantite',
-  //       'lcv.montant / lcv.quantite AS prix_unitaire',
-  //       'lcv.montant AS montant_ligne',
-  //     ])
-  //     .where('cv.date_commande_vente BETWEEN :startDate AND :endDate', {
-  //       startDate: `${startDate} 00:00:00`,
-  //       endDate: `${endDate} 23:59:59`,
-  //     })
-  //     .orderBy('c.nom', 'ASC')
-  //     .addOrderBy('cv.id_commande_vente', 'ASC')
-  //     .addOrderBy('lcv.designation', 'ASC');
-
-  //   const invoices = await queryBuilder.getRawMany();
-  //   console.log('Raw invoice data:', invoices);
-
-  //   const groupedData: { [key: string]: { [key: number]: InvoiceCommande } } =
-  //     invoices.reduce((acc, item) => {
-  //       const client = item.client_nom || 'Client Inconnu';
-  //       if (!acc[client]) {
-  //         acc[client] = {};
-  //       }
-  //       const commandeId = item.numero_commande;
-  //       if (!acc[client][commandeId]) {
-  //         acc[client][commandeId] = {
-  //           numero_commande: commandeId,
-  //           lignes: [],
-  //           total: 0,
-  //           montant_regle: 0,
-  //           montant_restant: 0,
-  //         };
-  //       }
-  //       acc[client][commandeId].lignes.push({
-  //         designation: item.designation,
-  //         quantite: Number(item.quantite || 1),
-  //         prix_unitaire: Number(item.prix_unitaire || 0),
-  //         montant_ligne: Number(item.montant_ligne || 0),
-  //       });
-  //       acc[client][commandeId].total += Number(item.montant_ligne || 0);
-  //       return acc;
-  //     }, {});
-
-  //   const data: ClientInvoice[] = Object.keys(groupedData).map((client) => ({
-  //     client,
-  //     commandes: Object.values(groupedData[client]).map((commande) => ({
-  //       numero_commande: commande.numero_commande,
-  //       lignes: commande.lignes,
-  //       total: commande.total,
-  //       montant_regle: commande.total, // À ajuster si cv.montant_regle existe
-  //       montant_restant: 0, // À ajuster si cv.montant_regle existe
-  //     })),
-  //   }));
-
-  //   return {
-  //     data,
-  //     periode: `du ${startDate} au ${endDate}`,
-  //   };
-  // }
-
   async getInvoicesByClient(
     startDate: string,
     endDate: string,
@@ -2548,5 +2472,131 @@ export class CommandeVenteService {
         `Erreur lors de l'exportation des factures impayées: ${error.message}`,
       );
     }
+  }
+
+  async getTotalPaidAmount(dto: {
+    date_debut?: string;
+    date_fin?: string;
+  }): Promise<number> {
+    const query = this.commandeVenteRepository
+      .createQueryBuilder('commande')
+      .select('SUM(commande.montant_total)', 'total')
+      .where('commande.reglee = :reglee', { reglee: 1 });
+
+    if (dto.date_debut && dto.date_fin) {
+      query.andWhere(
+        'commande.date_commande_vente BETWEEN :date_debut AND :date_fin',
+        {
+          date_debut: dto.date_debut,
+          date_fin: dto.date_fin,
+        },
+      );
+    }
+
+    const result = await query.getRawOne();
+    return parseFloat(result?.total || 0);
+  }
+
+  async getTotalUnpaidAmount(dto: {
+    date_debut?: string;
+    date_fin?: string;
+  }): Promise<number> {
+    const query = this.commandeVenteRepository
+      .createQueryBuilder('commande')
+      .select('SUM(commande.montant_total)', 'total')
+      .where('commande.reglee = :reglee', { reglee: 0 });
+
+    if (dto.date_debut && dto.date_fin) {
+      query.andWhere(
+        'commande.date_commande_vente BETWEEN :date_debut AND :date_fin',
+        {
+          date_debut: dto.date_debut,
+          date_fin: dto.date_fin,
+        },
+      );
+    }
+
+    const result = await query.getRawOne();
+    return parseFloat(result?.total || 0);
+  }
+
+  async getFacturesByMonth(dto: {
+    date_debut?: string;
+    date_fin?: string;
+  }): Promise<{
+    reglees: { mois: string; count: number }[];
+    nonReglees: { mois: string; count: number }[];
+  }> {
+    const queryReglees = this.commandeVenteRepository
+      .createQueryBuilder('commande')
+      .select("DATE_FORMAT(commande.date_commande_vente, '%Y-%m')", 'mois')
+      .addSelect('COUNT(*)', 'count')
+      .where('commande.reglee = :reglee', { reglee: 1 })
+      .groupBy('mois')
+      .orderBy('mois', 'ASC');
+
+    const queryNonReglees = this.commandeVenteRepository
+      .createQueryBuilder('commande')
+      .select("DATE_FORMAT(commande.date_commande_vente, '%Y-%m')", 'mois')
+      .addSelect('COUNT(*)', 'count')
+      .where('commande.reglee = :reglee', { reglee: 0 })
+      .groupBy('mois')
+      .orderBy('mois', 'ASC');
+
+    if (dto.date_debut && dto.date_fin) {
+      queryReglees.andWhere(
+        'commande.date_commande_vente BETWEEN :date_debut AND :date_fin',
+        {
+          date_debut: dto.date_debut,
+          date_fin: dto.date_fin,
+        },
+      );
+      queryNonReglees.andWhere(
+        'commande.date_commande_vente BETWEEN :date_debut AND :date_fin',
+        {
+          date_debut: dto.date_debut,
+          date_fin: dto.date_fin,
+        },
+      );
+    }
+
+    const reglees = await queryReglees.getRawMany();
+    const nonReglees = await queryNonReglees.getRawMany();
+
+    return {
+      reglees: reglees.map((r) => ({ mois: r.mois, count: parseInt(r.count) })),
+      nonReglees: nonReglees.map((r) => ({
+        mois: r.mois,
+        count: parseInt(r.count),
+      })),
+    };
+  }
+
+  async getSalesTrend(dto: {
+    date_debut?: string;
+    date_fin?: string;
+  }): Promise<{ month: string; value: number }[]> {
+    const query = this.commandeVenteRepository
+      .createQueryBuilder('commande')
+      .select("DATE_FORMAT(commande.date_commande_vente, '%Y-%m')", 'month')
+      .addSelect('SUM(commande.montant_total)', 'value')
+      .groupBy('month')
+      .orderBy('month', 'ASC');
+
+    if (dto.date_debut && dto.date_fin) {
+      query.where(
+        'commande.date_commande_vente BETWEEN :date_debut AND :date_fin',
+        {
+          date_debut: dto.date_debut,
+          date_fin: dto.date_fin,
+        },
+      );
+    }
+
+    const result = await query.getRawMany();
+    return result.map((r) => ({
+      month: r.month,
+      value: parseFloat(r.value),
+    }));
   }
 }

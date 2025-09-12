@@ -4,9 +4,10 @@ import { BanquesController } from './banques.controller';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Banque } from './entities/banque.entity';
 import { Compte } from 'src/comptes/entities/compte.entity';
+import { Depense } from 'src/depense/entities/depense.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Banque, Compte])],
+  imports: [TypeOrmModule.forFeature([Banque, Compte, Depense])],
   controllers: [BanquesController],
   providers: [BanquesService],
 })

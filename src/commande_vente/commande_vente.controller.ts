@@ -11,6 +11,8 @@ import {
   Res,
   ParseIntPipe,
   ValidationPipe,
+  HttpException,
+  HttpStatus,
 } from '@nestjs/common';
 import { ClientInvoice, CommandeVenteService } from './commande_vente.service';
 import { CreateCommandeVenteDto } from './dto/create-commande_vente.dto';
@@ -47,6 +49,50 @@ class DateRangeDto {
 @Controller('commande_vente')
 export class CommandeVenteController {
   constructor(private readonly commandeVenteService: CommandeVenteService) {}
+
+  @Get('sales-trend')
+  async getSalesTrend(
+    @Query() dto: { date_debut?: string; date_fin?: string },
+  ) {
+    try {
+      return await this.commandeVenteService.getSalesTrend(dto);
+    } catch (error) {
+      throw new HttpException(error.message, HttpStatus.BAD_REQUEST);
+    }
+  }
+
+  @Get('paid-amount')
+  async getPaidAmount(
+    @Query() dto: { date_debut?: string; date_fin?: string },
+  ) {
+    try {
+      return await this.commandeVenteService.getTotalPaidAmount(dto);
+    } catch (error) {
+      throw new HttpException(error.message, HttpStatus.BAD_REQUEST);
+    }
+  }
+
+  @Get('unpaid-amount')
+  async getUnpaidAmount(
+    @Query() dto: { date_debut?: string; date_fin?: string },
+  ) {
+    try {
+      return await this.commandeVenteService.getTotalUnpaidAmount(dto);
+    } catch (error) {
+      throw new HttpException(error.message, HttpStatus.BAD_REQUEST);
+    }
+  }
+
+  @Get('factures-by-month')
+  async getFacturesByMonth(
+    @Query() dto: { date_debut?: string; date_fin?: string },
+  ) {
+    try {
+      return await this.commandeVenteService.getFacturesByMonth(dto);
+    } catch (error) {
+      throw new HttpException(error.message, HttpStatus.BAD_REQUEST);
+    }
+  }
 
   @Get('unpaid-invoices/export')
   async exportUnpaidInvoices(

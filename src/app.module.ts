@@ -59,6 +59,7 @@ import { DirectionModule } from './direction/direction.module';
 import { PostesModule } from './postes/postes.module';
 import { MenuModule } from './menu/menu.module';
 import { DataSource } from 'typeorm';
+import { DepenseModule } from './depense/depense.module';
 @Module({
   imports: [
     ConfigModule.forRoot({}),
@@ -129,6 +130,7 @@ import { DataSource } from 'typeorm';
     DirectionModule,
     PostesModule,
     MenuModule,
+    DepenseModule,
   ],
   controllers: [AppController],
   providers: [AppService],

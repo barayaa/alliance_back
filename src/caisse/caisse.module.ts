@@ -3,9 +3,10 @@ import { CaisseService } from './caisse.service';
 import { CaisseController } from './caisse.controller';
 import { Caisse } from './entities/caisse.entity';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { Depense } from 'src/depense/entities/depense.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Caisse])],
+  imports: [TypeOrmModule.forFeature([Caisse, Depense])],
   controllers: [CaisseController],
   providers: [CaisseService],
 })
