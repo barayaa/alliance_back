@@ -55,8 +55,10 @@ export class Avoir {
   @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
   tva: number;
 
-  @Column()
-  type_isb: string;
+  @Column({
+    nullable: true,
+  })
+  type_isb?: string;
 
   @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
   isb: number;

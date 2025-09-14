@@ -56,11 +56,11 @@ export class CommandeVente {
   @Column({ type: 'double' })
   tva: number;
 
-  @Column({ type: 'varchar' })
-  type_isb: string;
+  @Column({ type: 'varchar', nullable: true })
+  type_isb?: string;
 
-  @Column({ type: 'double' })
-  isb: number;
+  @Column({ type: 'double', nullable: true })
+  isb?: number;
 
   @Column({ type: 'int' })
   avoir: number;

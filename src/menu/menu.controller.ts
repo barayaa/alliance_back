@@ -1,4 +1,12 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  Delete,
+} from '@nestjs/common';
 import { MenuService } from './menu.service';
 import { CreateMenuDto } from './dto/create-menu.dto';
 import { UpdateMenuDto } from './dto/update-menu.dto';
@@ -6,6 +14,11 @@ import { UpdateMenuDto } from './dto/update-menu.dto';
 @Controller('menu')
 export class MenuController {
   constructor(private readonly menuService: MenuService) {}
+
+  @Get('poste_menu/:id')
+  getPosteMenu(@Param('id') id: number) {
+    return this.menuService.getMenusByPoste(id);
+  }
 
   @Post()
   create(@Body() createMenuDto: CreateMenuDto) {

@@ -446,33 +446,39 @@ export class CommandeAchatService {
 
   async checkStockAllProducts(): Promise<StockConsistency[]> {
     try {
+      // Fetch all products
       const produits = await this.produitRepository.find();
 
-      const result: StockConsistency[] = [];
-      for (const produit of produits) {
-        const totalAchats = await this.lignesCommandeAchatRepository
-          .createQueryBuilder('lca')
-          .select('SUM(lca.quantite)', 'total')
-          .where('lca.designation = :idProduit', {
-            idProduit: produit.id_produit,
-          })
-          // .andWhere('lca.id_commande_achat != :idCommande', { idCommande: 60 })
-          .getRawOne();
+      // Fetch total achats and ventes for all products
+      const achats = await this.lignesCommandeAchatRepository
+        .createQueryBuilder('lca')
+        .select('lca.designation', 'id_produit')
+        .addSelect('SUM(lca.quantite)', 'total')
+        .groupBy('lca.designation')
+        .getRawMany();
 
-        const totalVentes = await this.lignesCommandeVenteRepository
-          .createQueryBuilder('lcv')
-          .select('SUM(lcv.quantite)', 'total')
-          .where('lcv.designation = :idProduit', {
-            idProduit: produit.id_produit,
-          })
-          .getRawOne();
+      const ventes = await this.lignesCommandeVenteRepository
+        .createQueryBuilder('lcv')
+        .select('lcv.designation', 'id_produit')
+        .addSelect('SUM(lcv.quantite)', 'total')
+        .groupBy('lcv.designation')
+        .getRawMany();
+
+      // Map results to StockConsistency
+      const result: StockConsistency[] = produits.map((produit) => {
+        const totalAchats = achats.find(
+          (a) => a.id_produit === produit.id_produit,
+        );
+        const totalVentes = ventes.find(
+          (v) => v.id_produit === produit.id_produit,
+        );
 
         const total_achats = Number(totalAchats?.total) || 0;
         const total_ventes = Number(totalVentes?.total) || 0;
         const stock_calcule = total_achats - total_ventes;
         const difference = produit.stock_courant - stock_calcule;
 
-        result.push({
+        return {
           id_produit: produit.id_produit,
           nom_produit: produit.produit,
           stock_courant: produit.stock_courant,
@@ -480,8 +486,8 @@ export class CommandeAchatService {
           total_ventes,
           stock_calcule,
           difference,
-        });
-      }
+        };
+      });
 
       console.log(
         'Résultat de la vérification des stocks:',
@@ -498,6 +504,61 @@ export class CommandeAchatService {
       );
     }
   }
+
+  // async checkStockAllProducts(): Promise<StockConsistency[]> {
+  //   try {
+  //     const produits = await this.produitRepository.find();
+
+  //     const result: StockConsistency[] = [];
+  //     for (const produit of produits) {
+  //       const totalAchats = await this.lignesCommandeAchatRepository
+  //         .createQueryBuilder('lca')
+  //         .select('SUM(lca.quantite)', 'total')
+  //         .where('lca.designation = :idProduit', {
+  //           idProduit: produit.id_produit,
+  //         })
+  //         // .andWhere('lca.id_commande_achat != :idCommande', { idCommande: 60 })
+  //         .getRawOne();
+
+  //       const totalVentes = await this.lignesCommandeVenteRepository
+  //         .createQueryBuilder('lcv')
+  //         .select('SUM(lcv.quantite)', 'total')
+  //         .where('lcv.designation = :idProduit', {
+  //           idProduit: produit.id_produit,
+  //         })
+  //         .getRawOne();
+
+  //       const total_achats = Number(totalAchats?.total) || 0;
+  //       const total_ventes = Number(totalVentes?.total) || 0;
+  //       const stock_calcule = total_achats - total_ventes;
+  //       const difference = produit.stock_courant - stock_calcule;
+
+  //       result.push({
+  //         id_produit: produit.id_produit,
+  //         nom_produit: produit.produit,
+  //         stock_courant: produit.stock_courant,
+  //         total_achats,
+  //         total_ventes,
+  //         stock_calcule,
+  //         difference,
+  //       });
+  //     }
+
+  //     console.log(
+  //       'Résultat de la vérification des stocks:',
+  //       JSON.stringify(result, null, 2),
+  //     );
+  //     return result;
+  //   } catch (error) {
+  //     console.error(
+  //       'Erreur lors de la vérification des stocks:',
+  //       JSON.stringify(error, null, 2),
+  //     );
+  //     throw new BadRequestException(
+  //       'Erreur lors de la vérification des stocks',
+  //     );
+  //   }
+  // }
 
   async listLignesVenteAcideFolique(): Promise<LignesCommandeVente[]> {
     return this.lignesCommandeVenteRepository.find({

@@ -6,6 +6,7 @@ import {
   IsArray,
   IsDateString,
   IsNotEmpty,
+  IsEmpty,
 } from 'class-validator';
 import { CreateLignesCommandeVenteDto } from 'src/lignes_commande_vente/dto/create-lignes_commande_vente.dto';
 
@@ -26,8 +27,8 @@ export class CreateCommandeVenteDto {
   remise: number;
 
   @IsString()
-  @IsNotEmpty()
-  type_isb: string;
+  @IsEmpty()
+  type_isb?: string;
 
   @IsArray()
   @IsNotEmpty()

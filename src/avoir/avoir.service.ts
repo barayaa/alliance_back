@@ -238,11 +238,11 @@ export class AvoirService {
         const mappedTypeIsb =
           isbMapping[dto.type_isb?.toUpperCase()] ||
           dto.type_isb?.toUpperCase();
-        if (!dto.type_isb || !validIsb.includes(mappedTypeIsb)) {
-          throw new BadRequestException(
-            `Type ISB invalide: ${dto.type_isb}. Valeurs valides: ${validIsb.join(', ')}`,
-          );
-        }
+        // if (!dto.type_isb || !validIsb.includes(mappedTypeIsb)) {
+        //   throw new BadRequestException(
+        //     `Type ISB invalide: ${dto.type_isb}. Valeurs valides: ${validIsb.join(', ')}`,
+        //   );
+        // }
         const isbRecord = await manager.findOne(Isb, {
           where: { isb: mappedTypeIsb },
         });
@@ -254,11 +254,11 @@ export class AvoirService {
           tr.type_reglement.trim().toUpperCase(),
         );
         const receivedTypeReglement = dto.type_reglement?.toUpperCase() || 'E';
-        if (!validTypeReglements.includes(receivedTypeReglement)) {
-          throw new BadRequestException(
-            `Type de règlement invalide: ${dto.type_reglement}. Valeurs valides: ${validTypeReglements.join(', ')}`,
-          );
-        }
+        // if (!validTypeReglements.includes(receivedTypeReglement)) {
+        //   throw new BadRequestException(
+        //     `Type de règlement invalide: ${dto.type_reglement}. Valeurs valides: ${validTypeReglements.join(', ')}`,
+        //   );
+        // }
 
         // Valider la remise globale
         if (dto.remise == null || isNaN(dto.remise) || dto.remise < 0) {

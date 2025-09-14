@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthModule } from './auth/auth.module';
 import { ReglementModule } from './reglement/reglement.module';
@@ -60,16 +60,62 @@ import { PostesModule } from './postes/postes.module';
 import { MenuModule } from './menu/menu.module';
 import { DataSource } from 'typeorm';
 import { DepenseModule } from './depense/depense.module';
+import { parseJawsDbUrl } from './utils/db_url-parser';
 @Module({
   imports: [
+    ConfigModule.forRoot({
+      isGlobal: true, // rend ConfigService dispo partout
+    }),
+    // TypeOrmModule.forRootAsync({
+    //   imports: [ConfigModule],
+    //   useFactory: (configService: ConfigService) => {
+    //     const nodeEnv = configService.get('NODE_ENV') || 'development';
+    //     const isProduction = nodeEnv === 'production';
+
+    //     if (isProduction) {
+    //       const jawsDbUrl = configService.get('JAWSDB_URL');
+    //       if (!jawsDbUrl) {
+    //         throw new Error('JAWSDB_URL required in production');
+    //       }
+    //       const dbConfig = parseJawsDbUrl(jawsDbUrl);
+    //       return {
+    //         type: 'mysql' as const,
+    //         host: dbConfig.host,
+    //         port: dbConfig.port,
+    //         username: dbConfig.username,
+    //         password: dbConfig.password,
+    //         database: dbConfig.database,
+    //         migrations: ['src/migrations/*.ts'],
+    //         autoLoadEntities: true,
+    //         synchronize: false, // TOUJOURS false en prod !
+    //         logging: configService.get('DB_LOGGING') === 'true',
+    //       };
+    //     } else {
+    //       // Config local (dev)
+    //       return {
+    //         type: 'mariadb' as const,
+    //         host: 'y2w3wxldca8enczv.cbetxkdyhwsb.us-east-1.rds.amazonaws.com',
+    //         port: 3306,
+    //         username: 'eue0kgjy0g754e2c',
+    //         password: 'j1lx54lu8ep9bszb',
+    //         database: 'w14j56cmvoln8hwx',
+    //         migrations: ['src/migrations/*.ts'],
+    //         autoLoadEntities: true,
+    //         synchronize: false,
+    //         logging: true,
+    //       };
+    //     }
+    //   },
+    //   inject: [ConfigService],
+    // }),
     ConfigModule.forRoot({}),
     TypeOrmModule.forRoot({
       type: 'mariadb',
-      host: 'localhost',
+      host: 'y2w3wxldca8enczv.cbetxkdyhwsb.us-east-1.rds.amazonaws.com',
       port: 3306,
-      username: 'root',
-      password: 'root',
-      database: 'mercredi_db',
+      username: 'eue0kgjy0g754e2c',
+      password: 'j1lx54lu8ep9bszb',
+      database: 'w14j56cmvoln8hwx',
       migrations: ['src/migrations/*.ts'],
       autoLoadEntities: true,
       synchronize: false,
@@ -77,6 +123,22 @@ import { DepenseModule } from './depense/depense.module';
       //  synchronize: true,
       logging: true,
     }),
+
+    // ConfigModule.forRoot({}),
+    // TypeOrmModule.forRoot({
+    //   type: 'mariadb',
+    //   host: 'localhost',
+    //   port: 3306,
+    //   username: 'root',
+    //   password: 'root',
+    //   database: 'mercredi_db',
+    //   migrations: ['src/migrations/*.ts'],
+    //   autoLoadEntities: true,
+    //   synchronize: false,
+    //   // entities: [__dirname + '/**/*.entity{.ts,.js}'],
+    //   //  synchronize: true,
+    //   logging: true,
+    // }),
     AuthModule,
     ReglementModule,
     TypeReglementModule,

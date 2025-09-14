@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Injectable,
   NotFoundException,
   UnauthorizedException,
@@ -621,116 +622,246 @@ export class MMvtStockService {
       produitId,
     });
 
-    let query = this.mMvtStockRepository
-      .createQueryBuilder('m_mvt_stock')
-      .leftJoinAndSelect('m_mvt_stock.produit', 'produit')
-      .leftJoinAndSelect('produit.marque', 'marque')
-      .leftJoinAndSelect('produit.titulaire_amm', 'titulaire_amm')
-      .leftJoinAndSelect('m_mvt_stock.typeMvt', 'typeMvt')
-      .leftJoinAndSelect('m_mvt_stock.ligneCommandeVente', 'ligneCommandeVente')
-      .leftJoinAndSelect('ligneCommandeVente.commandeVente', 'commandeVente')
-      .leftJoin('commandeVente.client', 'client')
-      .addSelect(['client.id_client', 'client.nom'])
-      .orderBy('m_mvt_stock.id_mouvement', 'DESC');
+    try {
+      let query = this.mMvtStockRepository
+        .createQueryBuilder('m_mvt_stock')
+        .leftJoinAndSelect('m_mvt_stock.produit', 'produit')
+        .leftJoinAndSelect('produit.marque', 'marque')
+        .leftJoinAndSelect('produit.titulaire_amm', 'titulaire_amm')
+        .leftJoinAndSelect('m_mvt_stock.typeMvt', 'typeMvt')
+        .leftJoinAndSelect(
+          'm_mvt_stock.ligneCommandeVente',
+          'ligneCommandeVente',
+        )
+        .leftJoinAndSelect('ligneCommandeVente.commandeVente', 'commandeVente')
+        .leftJoin('commandeVente.client', 'client')
+        .addSelect(['client.id_client', 'client.nom'])
+        .addSelect(
+          'CASE WHEN m_mvt_stock.stock_apres != produit.stock_courant THEN 1 ELSE 0 END',
+          'hasStockInconsistency',
+        )
+        .orderBy('m_mvt_stock.id_mouvement', 'DESC')
+        .take(100); // Ajouter une limite pour éviter les surcharges
 
-    // Filtre par défaut pour l'année 2025
-    query = query.andWhere('YEAR(m_mvt_stock.date) = :year', { year: 2025 });
-
-    // Surcharge avec dateDebut et dateFin si fournis
-    if (
-      dateDebut &&
-      dateFin &&
-      dateDebut !== 'NaN' &&
-      dateFin !== 'NaN' &&
-      dateDebut.trim() !== '' &&
-      dateFin.trim() !== ''
-    ) {
-      const dateFinEnd = new Date(
-        new Date(dateFin).setDate(new Date(dateFin).getDate() + 1),
-      )
-        .toISOString()
-        .split('T')[0];
+      // Filtre par plage de dates pour 2025
       query = query.andWhere(
-        'm_mvt_stock.date >= :dateDebut AND m_mvt_stock.date < :dateFinEnd',
-        { dateDebut, dateFinEnd },
+        'm_mvt_stock.date BETWEEN :startYear AND :endYear',
+        {
+          startYear: '2025-01-01',
+          endYear: '2025-12-31 23:59:59',
+        },
       );
-    } else if (dateDebut && dateDebut !== 'NaN' && dateDebut.trim() !== '') {
-      query = query.andWhere('m_mvt_stock.date >= :dateDebut', { dateDebut });
-    } else if (dateFin && dateFin !== 'NaN' && dateFin.trim() !== '') {
-      const dateFinEnd = new Date(
-        new Date(dateFin).setDate(new Date(dateFin).getDate() + 1),
-      )
-        .toISOString()
-        .split('T')[0];
-      query = query.andWhere('m_mvt_stock.date < :dateFinEnd', { dateFinEnd });
-    }
 
-    if (searchTerm && searchTerm.trim() !== '') {
-      const searchLower = `%${searchTerm.toLowerCase()}%`;
-      query = query.andWhere('LOWER(produit.produit) LIKE :search', {
-        search: searchLower,
-      });
-    }
-
-    if (typeMvt && typeMvt.trim() !== '') {
-      query = query.andWhere('typeMvt.type_mvt = :typeMvt', { typeMvt });
-    }
-
-    if (produitId && produitId !== '0' && produitId.trim() !== '') {
-      query = query.andWhere('m_mvt_stock.id_produit = :produitId', {
-        produitId: Number(produitId),
-      });
-    }
-
-    const queryString = query.getSql();
-    console.log('Generated SQL:', queryString);
-    let result = await query.getMany();
-    console.log('findAll result (2025):', result);
-
-    // Vérifier et corriger les incohérences avec stock_courant
-    for (const mvt of result) {
-      const produit = mvt.produit;
-      if (produit && mvt.stock_apres !== produit.stock_courant) {
-        console.warn(
-          `Incohérence détectée pour produit ${produit.produit} (id: ${produit.id_produit}): stock_apres = ${mvt.stock_apres}, stock_courant = ${produit.stock_courant}`,
-        );
-        // Optionnel : Mettre à jour stock_courant dans produit pour refléter le dernier mouvement
-        // produit.stock_courant = mvt.stock_apres;
-        // await this.produitRepository.save(produit);
+      // Surcharge avec dateDebut et dateFin
+      if (dateDebut && !isNaN(Date.parse(dateDebut))) {
+        if (dateFin && !isNaN(Date.parse(dateFin))) {
+          const dateFinEnd = new Date(
+            new Date(dateFin).setDate(new Date(dateFin).getDate() + 1),
+          )
+            .toISOString()
+            .split('T')[0];
+          query = query.andWhere(
+            'm_mvt_stock.date BETWEEN :dateDebut AND :dateFinEnd',
+            { dateDebut, dateFinEnd },
+          );
+        } else {
+          query = query.andWhere('m_mvt_stock.date >= :dateDebut', {
+            dateDebut,
+          });
+        }
+      } else if (dateFin && !isNaN(Date.parse(dateFin))) {
+        const dateFinEnd = new Date(
+          new Date(dateFin).setDate(new Date(dateFin).getDate() + 1),
+        )
+          .toISOString()
+          .split('T')[0];
+        query = query.andWhere('m_mvt_stock.date < :dateFinEnd', {
+          dateFinEnd,
+        });
       }
-    }
 
-    const formattedResult = result.map((mvt: any) => {
-      const mnt =
-        mvt.quantite && mvt.produit?.prix_unitaire
-          ? mvt.quantite * mvt.produit.prix_unitaire
-          : 0;
-      const tva =
-        mnt && mvt.produit?.taux_tva ? mnt * (mvt.produit.taux_tva / 100) : 0;
-      const mntTTC = mnt + tva;
-      const clientFournisseur =
-        mvt.typeMvt?.type_mvt === 'Vente'
-          ? (mvt.ligneCommandeVente?.commandeVente?.client?.nom ?? '-')
-          : (mvt.produit?.titulaire_amm?.titulaire_amm ?? '-');
+      if (searchTerm && searchTerm.trim() !== '') {
+        query = query.andWhere(
+          'MATCH(produit.produit) AGAINST(:search IN BOOLEAN MODE)',
+          {
+            search: searchTerm,
+          },
+        );
+      }
 
-      const originalStockApres = mvt.stock_apres;
-      const adjustedStockApres = Math.max(0, mvt.stock_apres);
-      const hasStockOverdraw = mvt.stock_apres < 0;
+      if (typeMvt && typeMvt.trim() !== '') {
+        query = query.andWhere('typeMvt.type_mvt = :typeMvt', { typeMvt });
+      }
 
-      return {
+      if (produitId && !isNaN(Number(produitId)) && produitId !== '0') {
+        query = query.andWhere('m_mvt_stock.id_produit = :produitId', {
+          produitId: Number(produitId),
+        });
+      }
+
+      const queryString = query.getSql();
+      console.log('Generated SQL:', queryString);
+      const result = await query.getMany();
+      console.log('findAll result (2025):', result);
+
+      const formattedResult = result.map((mvt) => ({
         ...mvt,
-        mnt,
-        tva,
-        mntTTC,
-        clientFournisseur,
-        stock_apres: adjustedStockApres,
-        originalStockApres,
-        hasStockOverdraw,
-      };
-    });
+        mnt: mvt.quantite * (mvt.produit?.prix_unitaire || 0),
+        tva:
+          mvt.quantite *
+          (mvt.produit?.prix_unitaire || 0) *
+          (mvt.produit?.taux_tva / 100 || 0),
+        mntTTC:
+          mvt.quantite *
+          (mvt.produit?.prix_unitaire || 0) *
+          (1 + mvt.produit?.taux_tva / 100 || 0),
+        clientFournisseur:
+          mvt.typeMvt?.type_mvt === 'Vente'
+            ? (mvt.ligneCommandeVente?.commandeVente?.client?.nom ?? '-')
+            : (mvt.produit?.titulaire_amm?.titulaire_amm ?? '-'),
+        stock_apres: Math.max(0, mvt.stock_apres),
+        originalStockApres: mvt.stock_apres,
+        hasStockOverdraw: mvt.stock_apres < 0,
+      }));
 
-    return formattedResult;
+      return formattedResult;
+    } catch (error) {
+      console.error(
+        "Erreur lors de l'exécution de la requête:",
+        error.message,
+        error.stack,
+      );
+      throw new BadRequestException(
+        'Erreur lors de la récupération des mouvements de stock',
+      );
+    }
   }
+
+  // async findAll(
+  //   searchTerm?: string,
+  //   dateDebut?: string,
+  //   dateFin?: string,
+  //   typeMvt?: string,
+  //   produitId?: string,
+  // ): Promise<any[]> {
+  //   console.log('findAll params:', {
+  //     searchTerm,
+  //     dateDebut,
+  //     dateFin,
+  //     typeMvt,
+  //     produitId,
+  //   });
+
+  //   let query = this.mMvtStockRepository
+  //     .createQueryBuilder('m_mvt_stock')
+  //     .leftJoinAndSelect('m_mvt_stock.produit', 'produit')
+  //     .leftJoinAndSelect('produit.marque', 'marque')
+  //     .leftJoinAndSelect('produit.titulaire_amm', 'titulaire_amm')
+  //     .leftJoinAndSelect('m_mvt_stock.typeMvt', 'typeMvt')
+  //     .leftJoinAndSelect('m_mvt_stock.ligneCommandeVente', 'ligneCommandeVente')
+  //     .leftJoinAndSelect('ligneCommandeVente.commandeVente', 'commandeVente')
+  //     .leftJoin('commandeVente.client', 'client')
+  //     .addSelect(['client.id_client', 'client.nom'])
+  //     .orderBy('m_mvt_stock.id_mouvement', 'DESC');
+
+  //   // Filtre par défaut pour l'année 2025
+  //   query = query.andWhere('YEAR(m_mvt_stock.date) = :year', { year: 2025 });
+
+  //   // Surcharge avec dateDebut et dateFin si fournis
+  //   if (
+  //     dateDebut &&
+  //     dateFin &&
+  //     dateDebut !== 'NaN' &&
+  //     dateFin !== 'NaN' &&
+  //     dateDebut.trim() !== '' &&
+  //     dateFin.trim() !== ''
+  //   ) {
+  //     const dateFinEnd = new Date(
+  //       new Date(dateFin).setDate(new Date(dateFin).getDate() + 1),
+  //     )
+  //       .toISOString()
+  //       .split('T')[0];
+  //     query = query.andWhere(
+  //       'm_mvt_stock.date >= :dateDebut AND m_mvt_stock.date < :dateFinEnd',
+  //       { dateDebut, dateFinEnd },
+  //     );
+  //   } else if (dateDebut && dateDebut !== 'NaN' && dateDebut.trim() !== '') {
+  //     query = query.andWhere('m_mvt_stock.date >= :dateDebut', { dateDebut });
+  //   } else if (dateFin && dateFin !== 'NaN' && dateFin.trim() !== '') {
+  //     const dateFinEnd = new Date(
+  //       new Date(dateFin).setDate(new Date(dateFin).getDate() + 1),
+  //     )
+  //       .toISOString()
+  //       .split('T')[0];
+  //     query = query.andWhere('m_mvt_stock.date < :dateFinEnd', { dateFinEnd });
+  //   }
+
+  //   if (searchTerm && searchTerm.trim() !== '') {
+  //     const searchLower = `%${searchTerm.toLowerCase()}%`;
+  //     query = query.andWhere('LOWER(produit.produit) LIKE :search', {
+  //       search: searchLower,
+  //     });
+  //   }
+
+  //   if (typeMvt && typeMvt.trim() !== '') {
+  //     query = query.andWhere('typeMvt.type_mvt = :typeMvt', { typeMvt });
+  //   }
+
+  //   if (produitId && produitId !== '0' && produitId.trim() !== '') {
+  //     query = query.andWhere('m_mvt_stock.id_produit = :produitId', {
+  //       produitId: Number(produitId),
+  //     });
+  //   }
+
+  //   const queryString = query.getSql();
+  //   console.log('Generated SQL:', queryString);
+  //   let result = await query.getMany();
+  //   console.log('findAll result (2025):', result);
+
+  //   // Vérifier et corriger les incohérences avec stock_courant
+  //   for (const mvt of result) {
+  //     const produit = mvt.produit;
+  //     if (produit && mvt.stock_apres !== produit.stock_courant) {
+  //       console.warn(
+  //         `Incohérence détectée pour produit ${produit.produit} (id: ${produit.id_produit}): stock_apres = ${mvt.stock_apres}, stock_courant = ${produit.stock_courant}`,
+  //       );
+  //       // Optionnel : Mettre à jour stock_courant dans produit pour refléter le dernier mouvement
+  //       // produit.stock_courant = mvt.stock_apres;
+  //       // await this.produitRepository.save(produit);
+  //     }
+  //   }
+
+  //   const formattedResult = result.map((mvt: any) => {
+  //     const mnt =
+  //       mvt.quantite && mvt.produit?.prix_unitaire
+  //         ? mvt.quantite * mvt.produit.prix_unitaire
+  //         : 0;
+  //     const tva =
+  //       mnt && mvt.produit?.taux_tva ? mnt * (mvt.produit.taux_tva / 100) : 0;
+  //     const mntTTC = mnt + tva;
+  //     const clientFournisseur =
+  //       mvt.typeMvt?.type_mvt === 'Vente'
+  //         ? (mvt.ligneCommandeVente?.commandeVente?.client?.nom ?? '-')
+  //         : (mvt.produit?.titulaire_amm?.titulaire_amm ?? '-');
+
+  //     const originalStockApres = mvt.stock_apres;
+  //     const adjustedStockApres = Math.max(0, mvt.stock_apres);
+  //     const hasStockOverdraw = mvt.stock_apres < 0;
+
+  //     return {
+  //       ...mvt,
+  //       mnt,
+  //       tva,
+  //       mntTTC,
+  //       clientFournisseur,
+  //       stock_apres: adjustedStockApres,
+  //       originalStockApres,
+  //       hasStockOverdraw,
+  //     };
+  //   });
+
+  //   return formattedResult;
+  // }
 
   async findAllForExport(
     searchTerm?: string,

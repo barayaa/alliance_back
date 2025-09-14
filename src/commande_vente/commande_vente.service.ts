@@ -1280,11 +1280,11 @@ export class CommandeVenteService {
         };
         const mappedTypeIsb =
           isbMapping[dto.type_isb.toUpperCase()] || dto.type_isb.toUpperCase();
-        if (!validIsb.includes(mappedTypeIsb)) {
-          throw new BadRequestException(
-            `Type ISB invalide: ${dto.type_isb}. Valeurs valides: ${validIsb.join(', ')} (mappé à: ${mappedTypeIsb})`,
-          );
-        }
+        // if (!validIsb.includes(mappedTypeIsb)) {
+        //   throw new BadRequestException(
+        //     `Type ISB invalide: ${dto.type_isb}. Valeurs valides: ${validIsb.join(', ')} (mappé à: ${mappedTypeIsb})`,
+        //   );
+        // }
         const isbRecord = await manager.findOne(Isb, {
           where: { isb: mappedTypeIsb },
         });
@@ -1299,11 +1299,11 @@ export class CommandeVenteService {
         const receivedTypeReglement =
           this.typeReglementMapping[dto.type_reglement] ||
           dto.type_reglement.toUpperCase();
-        if (!validTypeReglements.includes(receivedTypeReglement)) {
-          throw new BadRequestException(
-            `Type de règlement invalide: ${dto.type_reglement}. Valeurs valides: ${validTypeReglements.join(', ')}`,
-          );
-        }
+        // if (!validTypeReglements.includes(receivedTypeReglement)) {
+        //   throw new BadRequestException(
+        //     `Type de règlement invalide: ${dto.type_reglement}. Valeurs valides: ${validTypeReglements.join(', ')}`,
+        //   );
+        // }
 
         if (dto.remise == null || isNaN(dto.remise) || dto.remise < 0) {
           throw new BadRequestException(

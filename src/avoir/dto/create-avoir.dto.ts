@@ -3,7 +3,7 @@ export class CreateAvoirDto {
   id_client: number;
   date_avoir?: Date;
   remise?: number;
-  type_isb: string;
+  type_isb?: string;
   login: string;
   type_reglement?: string;
   client_vd?: string;
