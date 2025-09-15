@@ -18,11 +18,9 @@ export class PostesService {
     private menuRepository: Repository<Menu>,
   ) {}
 
-  // Créer un nouveau poste
   async create(createPosteDto: CreatePosteDto): Promise<Poste> {
     const { directionId, menuIds, ...posteData } = createPosteDto;
 
-    // Vérifier que la direction existe
     const direction = await this.directionRepository.findOne({
       where: { id: directionId },
     });
@@ -30,7 +28,6 @@ export class PostesService {
       throw new NotFoundException(`Direction with ID ${directionId} not found`);
     }
 
-    // Créer le poste
     const poste = this.posteRepository.create({
       ...posteData,
       direction,
