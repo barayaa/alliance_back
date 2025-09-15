@@ -66,48 +66,7 @@ import { parseJawsDbUrl } from './utils/db_url-parser';
     ConfigModule.forRoot({
       isGlobal: true, // rend ConfigService dispo partout
     }),
-    // TypeOrmModule.forRootAsync({
-    //   imports: [ConfigModule],
-    //   useFactory: (configService: ConfigService) => {
-    //     const nodeEnv = configService.get('NODE_ENV') || 'development';
-    //     const isProduction = nodeEnv === 'production';
 
-    //     if (isProduction) {
-    //       const jawsDbUrl = configService.get('JAWSDB_URL');
-    //       if (!jawsDbUrl) {
-    //         throw new Error('JAWSDB_URL required in production');
-    //       }
-    //       const dbConfig = parseJawsDbUrl(jawsDbUrl);
-    //       return {
-    //         type: 'mysql' as const,
-    //         host: dbConfig.host,
-    //         port: dbConfig.port,
-    //         username: dbConfig.username,
-    //         password: dbConfig.password,
-    //         database: dbConfig.database,
-    //         migrations: ['src/migrations/*.ts'],
-    //         autoLoadEntities: true,
-    //         synchronize: false, // TOUJOURS false en prod !
-    //         logging: configService.get('DB_LOGGING') === 'true',
-    //       };
-    //     } else {
-    //       // Config local (dev)
-    //       return {
-    //         type: 'mariadb' as const,
-    //         host: 'y2w3wxldca8enczv.cbetxkdyhwsb.us-east-1.rds.amazonaws.com',
-    //         port: 3306,
-    //         username: 'eue0kgjy0g754e2c',
-    //         password: 'j1lx54lu8ep9bszb',
-    //         database: 'w14j56cmvoln8hwx',
-    //         migrations: ['src/migrations/*.ts'],
-    //         autoLoadEntities: true,
-    //         synchronize: false,
-    //         logging: true,
-    //       };
-    //     }
-    //   },
-    //   inject: [ConfigService],
-    // }),
     ConfigModule.forRoot({}),
     TypeOrmModule.forRoot({
       type: 'mariadb',
@@ -119,26 +78,14 @@ import { parseJawsDbUrl } from './utils/db_url-parser';
       migrations: ['src/migrations/*.ts'],
       autoLoadEntities: true,
       synchronize: false,
+      ssl: {
+        rejectUnauthorized: false,
+      },
       // entities: [__dirname + '/**/*.entity{.ts,.js}'],
       //  synchronize: true,
-      logging: true,
+      // logging: true,
     }),
 
-    // ConfigModule.forRoot({}),
-    // TypeOrmModule.forRoot({
-    //   type: 'mariadb',
-    //   host: 'localhost',
-    //   port: 3306,
-    //   username: 'root',
-    //   password: 'root',
-    //   database: 'mercredi_db',
-    //   migrations: ['src/migrations/*.ts'],
-    //   autoLoadEntities: true,
-    //   synchronize: false,
-    //   // entities: [__dirname + '/**/*.entity{.ts,.js}'],
-    //   //  synchronize: true,
-    //   logging: true,
-    // }),
     AuthModule,
     ReglementModule,
     TypeReglementModule,
