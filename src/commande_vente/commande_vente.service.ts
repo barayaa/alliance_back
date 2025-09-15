@@ -1668,7 +1668,7 @@ export class CommandeVenteService {
     const queryBuilder = this.commandeVenteRepository
       .createQueryBuilder('cv')
       .innerJoin('cv.lignes', 'lcv')
-      .innerJoin('client', 'c', 'cv.id_client = c.id_client')
+      .leftJoin('client', 'c', 'cv.id_client = c.id_client') // Changé en LEFT JOIN
       .innerJoin('produit', 'p', 'lcv.designation = p.id_produit')
       .select([
         'p.produit AS nom_produit',
@@ -1681,7 +1681,7 @@ export class CommandeVenteService {
         dateDebut: `${date_debut} 00:00:00`,
         dateFin: `${date_fin} 23:59:59`,
       })
-      .andWhere('p.produit != :timbre', { timbre: 'Timbre fiscale' }) // Exclure Timbre fiscale
+      .andWhere('p.produit != :timbre', { timbre: 'Timbre fiscale' })
       .groupBy('p.produit, p.presentation')
       .orderBy('p.produit', 'ASC')
       .take(limit);
@@ -1706,6 +1706,57 @@ export class CommandeVenteService {
       count: sales.length,
     };
   }
+  // async getSalesByDateRange(
+  //   date_debut: string,
+  //   date_fin: string,
+  //   limit: number,
+  // ): Promise<{
+  //   data: SaleDto[];
+  //   total_montant: number;
+  //   periode: string;
+  //   count: number;
+  // }> {
+  //   const queryBuilder = this.commandeVenteRepository
+  //     .createQueryBuilder('cv')
+  //     .innerJoin('cv.lignes', 'lcv')
+  //     .innerJoin('client', 'c', 'cv.id_client = c.id_client')
+  //     .innerJoin('produit', 'p', 'lcv.designation = p.id_produit')
+  //     .select([
+  //       'p.produit AS nom_produit',
+  //       'p.presentation AS presentation',
+  //       'SUM(lcv.quantite) AS quantite',
+  //       'AVG(lcv.prix_vente) AS prix_unitaire',
+  //       'SUM(lcv.montant) AS montant_ligne',
+  //     ])
+  //     .where('cv.date_commande_vente BETWEEN :dateDebut AND :dateFin', {
+  //       dateDebut: `${date_debut} 00:00:00`,
+  //       dateFin: `${date_fin} 23:59:59`,
+  //     })
+  //     .andWhere('p.produit != :timbre', { timbre: 'Timbre fiscale' }) // Exclure Timbre fiscale
+  //     .groupBy('p.produit, p.presentation')
+  //     .orderBy('p.produit', 'ASC')
+  //     .take(limit);
+
+  //   const sales = await queryBuilder.getRawMany();
+
+  //   if (!sales.length) {
+  //     throw new NotFoundException(
+  //       `Aucune donnée pour la période du ${date_debut} au ${date_fin}`,
+  //     );
+  //   }
+
+  //   const totalMontant = sales.reduce(
+  //     (sum, sale) => sum + (sale.montant_ligne || 0),
+  //     0,
+  //   );
+
+  //   return {
+  //     data: sales,
+  //     total_montant: totalMontant,
+  //     periode: `du ${date_debut} au ${date_fin}`,
+  //     count: sales.length,
+  //   };
+  // }
 
   async getSalesReport(
     startDate: string,
