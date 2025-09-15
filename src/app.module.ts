@@ -76,7 +76,7 @@ import { parseJawsDbUrl } from './utils/db_url-parser';
       password: 'j1lx54lu8ep9bszb',
       database: 'w14j56cmvoln8hwx',
       migrations: ['src/migrations/*.ts'],
-      // autoLoadEntities: true,
+      autoLoadEntities: true,
       synchronize: false,
       ssl: {
         rejectUnauthorized: false,
