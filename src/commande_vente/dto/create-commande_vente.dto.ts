@@ -28,7 +28,7 @@ export class CreateCommandeVenteDto {
 
   @IsString()
   @IsEmpty()
-  type_isb?: string;
+  type_isb?: any;
 
   @IsArray()
   @IsNotEmpty()
@@ -41,6 +41,10 @@ export class CreateCommandeVenteDto {
   @IsString()
   @IsOptional()
   client_vd?: string | null;
+
+  @IsNumber()
+  @IsOptional()
+  tva?: number;
 
   @IsString()
   @IsOptional()

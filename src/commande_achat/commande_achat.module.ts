@@ -10,6 +10,7 @@ import { Destination } from '../destination/destination.entity';
 import { Produit } from '../produit/produit.entity';
 import { MMvtStock } from '../m_mvt_stock/m_mvt_stock.entity';
 import { LignesCommandeVente } from '../lignes_commande_vente/lignes_commande_vente.entity';
+import { Fournisseur } from 'src/fournisseur/fournisseur.entity';
 
 @Module({
   imports: [
@@ -20,7 +21,7 @@ import { LignesCommandeVente } from '../lignes_commande_vente/lignes_commande_ve
       Destination,
       Produit, // Ajouté
       MMvtStock,
-
+      Fournisseur,
       LignesCommandeVente,
     ]),
     // LignesCommandeAchatModule,

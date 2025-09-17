@@ -70,17 +70,17 @@ import { parseJawsDbUrl } from './utils/db_url-parser';
     ConfigModule.forRoot({}),
     TypeOrmModule.forRoot({
       type: 'mariadb',
-      host: 'y2w3wxldca8enczv.cbetxkdyhwsb.us-east-1.rds.amazonaws.com',
+      host: 'laoca',
       port: 3306,
-      username: 'eue0kgjy0g754e2c',
-      password: 'j1lx54lu8ep9bszb',
-      database: 'w14j56cmvoln8hwx',
+      username: 'root',
+      password: 'root',
+      database: 'mercredi_db',
       migrations: ['src/migrations/*.ts'],
       autoLoadEntities: true,
       synchronize: false,
-      ssl: {
-        rejectUnauthorized: false,
-      },
+      // ssl: {
+      //   rejectUnauthorized: false,
+      // },
       poolSize: 3,
       extra: {
         connectionLimit: 3,

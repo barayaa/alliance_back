@@ -50,6 +50,11 @@ class DateRangeDto {
 export class CommandeVenteController {
   constructor(private readonly commandeVenteService: CommandeVenteService) {}
 
+  @Get('findtout')
+  findTout() {
+    return this.commandeVenteService.getA();
+  }
+
   @Get('sales-trend')
   async getSalesTrend(
     @Query() dto: { date_debut?: string; date_fin?: string },

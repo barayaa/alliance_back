@@ -13,10 +13,11 @@ import { AuthenticationGuard } from './guards/authentication/authentication.guar
 import { RolesGuard } from './guards/roles/roles.guard';
 import { AccessTokenGuard } from './guards/access-token/access-token.guard';
 import { Client } from 'src/client/client.entity';
+import { Poste } from 'src/postes/entities/poste.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([User, Client]),
+    TypeOrmModule.forFeature([User, Client, Poste]),
     JwtModule.registerAsync(jwtConfig.asProvider()),
     ConfigModule.forFeature(jwtConfig),
   ],

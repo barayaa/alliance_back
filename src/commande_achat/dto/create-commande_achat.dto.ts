@@ -26,11 +26,11 @@ export class CreateCommandeAchatDto {
 
   @IsNumber()
   @Type(() => Number) // Convert string to number
-  moyen_reglement: number;
+  moyen_reglement?: number;
 
   @IsNumber()
   @Type(() => Number) // Convert string to number
-  type_reglement: number;
+  type_reglement?: number;
 
   @IsArray()
   @Type(() => CreateLignesCommandeAchatDto)

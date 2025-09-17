@@ -28,7 +28,7 @@ import { MMvtStock } from 'src/m_mvt_stock/m_mvt_stock.entity';
 import { CaptureStockService } from 'src/capture_stock/capture_stock.service';
 import { Log } from 'src/log/log.entity';
 import { GetUnpaidInvoicesDto } from './dto/invoice-unpaid.dto';
-
+import * as fs from 'fs';
 interface InvoiceLine {
   designation: string;
   quantite: number;
@@ -144,6 +144,12 @@ function formatDate(date: string | Date | null | undefined): string {
 }
 @Injectable()
 export class CommandeVenteService {
+  private readonly VALID_TYPES = ['full', 'simple', 'bl', 'bp'] as const;
+  private readonly MARGINS = 40;
+  private readonly PAGE_WIDTH = 595.28; // A4 width
+  private readonly HEADER_HEIGHT = 80;
+  private readonly ROW_HEIGHT = 20;
+  private readonly MAX_Y = 750;
   constructor(
     @InjectRepository(CommandeVente)
     private commandeVenteRepository: Repository<CommandeVente>,
@@ -172,6 +178,9 @@ export class CommandeVenteService {
     private lignesCommandeVenteRepository: Repository<LignesCommandeVente>,
   ) {}
 
+  getA() {
+    return this.commandeVenteRepository.find();
+  }
   async getProductSalesHistory(
     id_produit: number,
     date_debut?: string,
@@ -244,466 +253,72 @@ export class CommandeVenteService {
   async generatePdf(
     id: number,
     res: Response,
-    type: 'full' | 'simple' = 'full',
+    type: 'full' | 'simple' | 'bl' | 'bp' = 'full',
   ): Promise<void> {
+    if (!this.VALID_TYPES.includes(type)) {
+      throw new BadRequestException(`Type de document non valide: ${type}`);
+    }
+
     try {
       // Récupérer la commande
       const commande = await this.commandeVenteRepository.findOne({
         where: { id_commande_vente: id },
         relations: ['client', 'lignes', 'lignes.produit'],
       });
+
       if (!commande) {
         throw new NotFoundException(`Commande avec id ${id} non trouvée`);
       }
 
-      console.log('Commande récupérée:', JSON.stringify(commande, null, 2));
+      if (!commande.lignes || !commande.client) {
+        throw new BadRequestException('Données de commande incomplètes');
+      }
 
-      // Créer un nouveau document PDF
-      const doc = new PDFDocument({ size: 'A4', margin: 40 });
+      // Créer le document PDF
+      const doc = new PDFDocument({ size: 'A4', margin: this.MARGINS });
       res.setHeader('Content-Type', 'application/pdf');
-      const filename = `facture_${sanitizeString(commande.id_commande_vente.toString())}_${type}.pdf`;
+      const documentType =
+        type === 'bl'
+          ? 'bon_de_livraison'
+          : type === 'bp'
+            ? 'bon_de_preparation'
+            : 'facture';
+      const filename = `${documentType}_${sanitizeString(commande.id_commande_vente.toString())}_${type}.pdf`;
       res.setHeader(
         'Content-Disposition',
         `attachment; filename="${filename}"`,
       );
 
-      // Gérer les erreurs du flux
-      doc.on('error', (err) => {
-        console.error('Erreur dans le flux PDF:', err);
-        if (!res.headersSent) {
-          res
-            .status(500)
-            .json({ message: 'Erreur lors de la génération du PDF' });
-        }
-      });
-
       // Sauvegarde locale pour débogage
-      const fs = require('fs');
-      doc.pipe(fs.createWriteStream(`test_facture_${id}.pdf`));
-      console.log(`PDF sauvegardé localement : test_facture_${id}.pdf`);
-
-      // Associer le flux PDF à la réponse
+      doc.pipe(fs.createWriteStream(`test_${documentType}_${id}.pdf`));
       doc.pipe(res);
 
-      // Ajouter le logo en arrière-plan (filigrane) sur toutes les pages
-      // doc.on('pageAdded', () => {
-      //   try {
-      //     doc
-      //       .image('src/uploads/rmlogo.png', 150, 200, {
-      //         width: 300,
-      //         opacity: 0.1, // Faible opacité pour le filigrane
-      //       })
-      //       .restore();
-      //   } catch (error) {
-      //     console.warn('Logo de fond non trouvé, ignoré');
-      //   }
-      // });
+      // En-tête commun
+      this.drawHeader(doc, commande, type);
 
-      if (type === 'full') {
-        // Fonction pour afficher l'en-tête du tableau
-        const drawTableHeader = (
-          tableTop: number,
-          tableLeft: number,
-          columnWidths: number[],
-        ) => {
-          doc.fontSize(10).font('Helvetica-Bold');
-          let x = tableLeft;
-          const headers = [
-            'Désignation',
-            'Quantité',
-            'Prix Unitaire',
-            "Date d'expiration",
-            'Montant',
-          ];
-          headers.forEach((header, i) => {
-            doc.text(header, x, tableTop, {
-              width: columnWidths[i],
-              align: 'center',
-            });
-            x += columnWidths[i];
-          });
-          doc
-            .moveTo(tableLeft, tableTop + 20)
-            .lineTo(
-              tableLeft + columnWidths.reduce((a, b) => a + b, 0),
-              tableTop + 20,
-            )
-            .stroke();
-        };
-
-        // En-tête réorganisé
-        const headerTop = 40;
-        const headerHeight = 80;
-        const pageWidth = 595.28; // Largeur A4
-        const margin = 40;
-        const sectionWidth = (pageWidth - 2 * margin) / 3; // Trois sections égales
-
-        // Section 1 : Alliance Pharma (gauche)
-        doc
-          .rect(margin, headerTop, sectionWidth, headerHeight)
-          .strokeColor('black')
-          .stroke();
-        doc.fontSize(10).font('Helvetica-Bold');
-        doc.text('ALLIANCE PHARMA', margin + 10, headerTop + 10, {
-          width: sectionWidth - 20,
-          align: 'center',
-        });
-        doc.fontSize(8).font('Helvetica');
-        doc.text('Tel: 80130610', margin + 10, headerTop + 25, {
-          width: sectionWidth - 20,
-          align: 'center',
-        });
-        doc.text(
-          'RCCM: NE/NIM/01/2024/B14/00004',
-          margin + 10,
-          headerTop + 35,
-          {
-            width: sectionWidth - 20,
-            align: 'center',
-          },
-        );
-        doc.text('NIF: 37364/R', margin + 10, headerTop + 45, {
-          width: sectionWidth - 20,
-          align: 'center',
-        });
-        doc.text('BP: 11807', margin + 10, headerTop + 55, {
-          width: sectionWidth - 20,
-          align: 'center',
-        });
-        doc.text('Adresse: NIAMEY', margin + 10, headerTop + 65, {
-          width: sectionWidth - 20,
-          align: 'center',
-        });
-
-        // Section 2 : Logo (milieu)
-        doc
-          .rect(margin + sectionWidth, headerTop, sectionWidth, headerHeight)
-          .strokeColor('black')
-          .stroke();
-        try {
-          doc.image(
-            'src/uploads/rmlogo.png',
-            margin + sectionWidth + (sectionWidth - 90) / 2,
-            headerTop + 10,
-            {
-              width: 90,
-            },
-          );
-        } catch (error) {
-          console.warn('Logo non trouvé, placeholder utilisé');
-          doc
-            .fontSize(10)
-            .font('Helvetica-Bold')
-            .text('LOGO', margin + sectionWidth + 10, headerTop + 40, {
-              width: sectionWidth - 20,
-              align: 'center',
-            });
-        }
-
-        // Section 3 : Numéro facture et date (droite)
-        doc
-          .rect(
-            margin + 2 * sectionWidth,
-            headerTop,
-            sectionWidth,
-            headerHeight,
-          )
-          .strokeColor('black')
-          .stroke();
-        doc.fontSize(10).font('Helvetica-Bold');
-        doc.text(
-          `FACTURE DE VENTE N° ${sanitizeString(commande.id_commande_vente.toString())}`,
-          margin + 2 * sectionWidth + 10,
-          headerTop + 10,
-          { width: sectionWidth - 20, align: 'center' },
-        );
-        doc.fontSize(8).font('Helvetica');
-        doc.text(
-          `Date: ${formatDate(commande.date_commande_vente)}`,
-          margin + 2 * sectionWidth + 10,
-          headerTop + 30,
-          { width: sectionWidth - 20, align: 'center' },
-        );
-
-        // Traits verticaux pour séparer les sections
-        doc
-          .moveTo(margin + sectionWidth, headerTop)
-          .lineTo(margin + sectionWidth, headerTop + headerHeight)
-          .stroke();
-        doc
-          .moveTo(margin + 2 * sectionWidth, headerTop)
-          .lineTo(margin + 2 * sectionWidth, headerTop + headerHeight)
-          .stroke();
-
-        // Ligne de séparation sous l'en-tête
-        doc
-          .moveTo(margin, headerTop + headerHeight + 10)
-          .lineTo(pageWidth - margin, headerTop + headerHeight + 10)
-          .stroke();
-
-        // Infos utilisateur connecté et client (côte à côte)
-        const infoTop = headerTop + headerHeight + 20;
-        doc.fontSize(8).font('Helvetica');
-        doc.text(`Login: ${sanitizeString(commande.login)}`, margin, infoTop);
-
-        // Infos client (à droite)
-        const clientX = margin + 400;
-        doc.text(
-          `Client: ${sanitizeString(commande.client?.nom)}`,
-          clientX,
-          infoTop,
-        );
-        doc.text(
-          `NIF: ${sanitizeString(commande.client?.nif)}`,
-          clientX,
-          infoTop + 15,
-        );
-        doc.text(
-          `Adresse: ${sanitizeString(commande.client?.adresse)}`,
-          clientX,
-          infoTop + 30,
-        );
-        doc.text(
-          `Téléphone: ${sanitizeString(commande.client?.telephone)}`,
-          clientX,
-          infoTop + 45,
-        );
-
-        // Tableau des produits
-        const tableTop = infoTop + 60;
-        const tableLeft = margin;
-        const columnWidths = [200, 80, 80, 100, 80];
-        const rowHeight = 20;
-        const maxY = 750; // Hauteur maximale de la page (A4 - marges)
-
-        // En-tête du tableau
-        drawTableHeader(tableTop, tableLeft, columnWidths);
-
-        // Lignes du tableau
-        doc.font('Helvetica');
-        let y = tableTop + 30;
-        let subtotal = 0;
-
-        commande.lignes.forEach((ligne) => {
-          // Vérifier si on dépasse la page
-          if (y + rowHeight > maxY) {
-            doc.addPage();
-            y = 40; // Nouvelle page, marge haute
-            drawTableHeader(y, tableLeft, columnWidths);
-            y += 30;
-          }
-
-          const totalLigne = ligne.montant;
-          subtotal += totalLigne;
-          let x = tableLeft;
-          doc.text(
-            sanitizeString(
-              ligne.produit?.produit || ligne.designation.toString(),
-            ),
-            x,
-            y,
-            { width: columnWidths[0], align: 'left' },
-          );
-          doc.text(ligne.quantite.toString(), x + columnWidths[0], y, {
-            width: columnWidths[1],
-            align: 'center',
-          });
-          doc.text(
-            Number(ligne.prix_vente || 0).toFixed(2),
-            x + columnWidths[0] + columnWidths[1],
-            y,
-            { width: columnWidths[2], align: 'center' },
-          );
-          doc.text(
-            formatDate(ligne.produit?.validite_amm),
-            x + columnWidths[0] + columnWidths[1] + columnWidths[2],
-            y,
-            { width: columnWidths[3], align: 'center' },
-          );
-          doc.text(
-            Number(totalLigne || 0).toFixed(2),
-            x +
-              columnWidths[0] +
-              columnWidths[1] +
-              columnWidths[2] +
-              columnWidths[3],
-            y,
-            { width: columnWidths[4], align: 'center' },
-          );
-          y += rowHeight;
-        });
-        doc
-          .moveTo(tableLeft, y)
-          .lineTo(tableLeft + columnWidths.reduce((a, b) => a + b, 0), y)
-          .stroke();
-
-        // Vérifier si le résumé dépasse la page
-        let summaryTop = y + 20;
-        if (summaryTop + 150 > maxY) {
-          doc.addPage();
-          summaryTop = 40;
-        }
-
-        // Résumé
-        doc.fontSize(10).font('Helvetica-Bold');
-        doc.text('Résumé', margin, summaryTop);
-        doc.fontSize(8).font('Helvetica');
-        doc.text(
-          `Total TVA: ${Number(commande.tva || 0).toFixed(2)} CFA`,
-          margin + 300,
-          summaryTop + 10,
-          { align: 'right' },
-        );
-        const precompte = Number(commande.isb || 539);
-        doc.text(
-          `Précompte BIC [A] 2%: ${precompte.toFixed(2)} CFA`,
-          margin + 300,
-          summaryTop + 25,
-          { align: 'right' },
-        );
-        doc.text(
-          `Total TTC: ${Number(commande.montant_total || 0).toFixed(2)} CFA`,
-          margin + 300,
-          summaryTop + 40,
-          { align: 'right' },
-        );
-        doc.text(
-          `Moyen de paiement: ${sanitizeString(this.typeReglementMapping[commande.type_reglement] || commande.type_reglement)}`,
-          margin + 300,
-          summaryTop + 55,
-          { align: 'right' },
-        );
-        doc.text(
-          `Nombre d'articles: ${commande.lignes.length}`,
-          margin + 300,
-          summaryTop + 70,
-          { align: 'right' },
-        );
-        doc.text('* Montants en francs CFA', margin + 300, summaryTop + 85, {
-          align: 'right',
-        });
-        doc.text(
-          `Arrêté la présente facture à ${numberToWordsFr(Number(commande.montant_total || 0))} francs CFA`,
-          margin,
-          summaryTop + 100,
-        );
-        doc.text('Le Gestionnaire', margin, summaryTop + 115, {
-          underline: true,
-        });
-
-        doc
-          .moveTo(margin, summaryTop + 130)
-          .lineTo(pageWidth - margin, summaryTop + 130)
-          .stroke();
-      } else {
-        // PDF Simplifié
-        doc.fontSize(10).font('Helvetica-Bold');
-        doc.text(
-          `FACTURE DE VENTE N° ${sanitizeString(commande.id_commande_vente.toString())}`,
-          50,
-          50,
-        );
-        doc.fontSize(8).font('Helvetica');
-        doc.text(`Date: ${formatDate(commande.date_commande_vente)}`, 50, 65);
-        doc.text(`Client: ${sanitizeString(commande.client?.nom)}`, 50, 80);
-
-        doc.fontSize(8);
-        const tableTop = 110;
-        const tableLeft = 50;
-        const rowHeight = 20;
-        const maxY = 750;
-
-        doc.font('Helvetica-Bold');
-        doc.text('Désignation', tableLeft, tableTop, { width: 200 });
-        doc.text('Quantité', tableLeft + 200, tableTop, {
-          width: 100,
-          align: 'right',
-        });
-        doc.text('Montant', tableLeft + 300, tableTop, {
-          width: 100,
-          align: 'right',
-        });
-        doc
-          .moveTo(tableLeft, tableTop + 15)
-          .lineTo(450, tableTop + 15)
-          .stroke();
-
-        let y = tableTop + rowHeight;
-        let subtotal = 0;
-
-        doc.font('Helvetica');
-        commande.lignes.forEach((ligne) => {
-          if (y + rowHeight > maxY) {
-            doc.addPage();
-            y = 40;
-            doc.fontSize(8).font('Helvetica-Bold');
-            doc.text('Désignation', tableLeft, y, { width: 200 });
-            doc.text('Quantité', tableLeft + 200, y, {
-              width: 100,
-              align: 'right',
-            });
-            doc.text('Montant', tableLeft + 300, y, {
-              width: 100,
-              align: 'right',
-            });
-            doc
-              .moveTo(tableLeft, y + 15)
-              .lineTo(450, y + 15)
-              .stroke();
-            y += rowHeight;
-          }
-
-          const totalLigne = ligne.montant;
-          subtotal += totalLigne;
-          doc.fontSize(8).font('Helvetica');
-          doc.text(
-            sanitizeString(
-              ligne.produit?.produit || ligne.designation.toString(),
-            ),
-            tableLeft,
-            y,
-            { width: 200 },
-          );
-          doc.text(ligne.quantite.toString(), tableLeft + 200, y, {
-            width: 100,
-            align: 'right',
-          });
-          doc.text(Number(totalLigne || 0).toFixed(2), tableLeft + 300, y, {
-            width: 100,
-            align: 'right',
-          });
-          y += rowHeight;
-        });
-
-        doc.moveTo(tableLeft, y).lineTo(450, y).stroke();
-
-        let totalTop = y + 20;
-        if (totalTop + 20 > maxY) {
-          doc.addPage();
-          totalTop = 40;
-        }
-
-        doc.fontSize(10).font('Helvetica-Bold');
-        doc.text(
-          `TOTAL TTC: ${Number(commande.montant_total || 0).toFixed(2)} CFA`,
-          450,
-          totalTop,
-          { align: 'right' },
-        );
+      // Corps du document
+      switch (type) {
+        case 'full':
+          this.drawFullInvoice(doc, commande);
+          break;
+        case 'simple':
+          this.drawSimpleInvoice(doc, commande);
+          break;
+        case 'bl':
+          this.drawDeliveryNote(doc, commande);
+          break;
+        case 'bp':
+          this.drawPreparationNote(doc, commande);
+          break;
       }
 
       // Finaliser le document
-      console.log('Finalisation du PDF pour commande', id);
       doc.end();
 
       // Mettre à jour la commande
       commande.imprimee = 1;
       await this.commandeVenteRepository.save(commande);
     } catch (error) {
-      console.error(
-        'Erreur lors de la génération du PDF:',
-        JSON.stringify(error, null, 2),
-      );
       if (!res.headersSent) {
         res.status(500).json({
           message: `Erreur lors de la génération du PDF: ${error.message}`,
@@ -714,479 +329,1320 @@ export class CommandeVenteService {
       );
     }
   }
-  // async generatePdf(
-  //   id: number,
-  //   res: Response,
-  //   type: 'full' | 'simple' = 'full',
-  // ): Promise<void> {
+
+  // private drawHeader(doc: PDFDocument, commande: any, type: string): void {
+  //   const headerTop = 40;
+  //   const sectionWidth = (this.PAGE_WIDTH - 2 * this.MARGINS) / 3;
+
+  //   // Section 1: Alliance Pharma
+  //   doc
+  //     .rect(this.MARGINS, headerTop, sectionWidth, this.HEADER_HEIGHT)
+  //     .strokeColor('black')
+  //     .stroke();
+  //   doc.fontSize(10).font('Helvetica-Bold');
+  //   doc.text('ALLIANCE PHARMA', this.MARGINS + 10, headerTop + 10, {
+  //     width: sectionWidth - 20,
+  //     align: 'center',
+  //   });
+  //   doc.fontSize(8).font('Helvetica');
+  //   doc.text('Tel: 80130610', this.MARGINS + 10, headerTop + 25, {
+  //     width: sectionWidth - 20,
+  //     align: 'center',
+  //   });
+  //   // ... autres textes similaires
+
+  //   // Section 2: Logo
+  //   doc
+  //     .rect(
+  //       this.MARGINS + sectionWidth,
+  //       headerTop,
+  //       sectionWidth,
+  //       this.HEADER_HEIGHT,
+  //     )
+  //     .strokeColor('black')
+  //     .stroke();
   //   try {
-  //     // Récupérer la commande
-  //     const commande = await this.commandeVenteRepository.findOne({
-  //       where: { id_commande_vente: id },
-  //       relations: ['client', 'lignes', 'lignes.produit'],
-  //     });
-  //     if (!commande) {
-  //       throw new NotFoundException(`Commande avec id ${id} non trouvée`);
-  //     }
-
-  //     console.log('Commande récupérée:', JSON.stringify(commande, null, 2));
-
-  //     // Créer un nouveau document PDF
-  //     const doc = new PDFDocument({ size: 'A4', margin: 40 });
-  //     res.setHeader('Content-Type', 'application/pdf');
-  //     const filename = `facture_${sanitizeString(commande.id_commande_vente.toString())}_${type}.pdf`;
-  //     res.setHeader(
-  //       'Content-Disposition',
-  //       `attachment; filename="${filename}"`,
+  //     doc.image(
+  //       'src/uploads/rmlogo.png',
+  //       this.MARGINS + sectionWidth + (sectionWidth - 90) / 2,
+  //       headerTop + 10,
+  //       {
+  //         width: 90,
+  //       },
   //     );
-
-  //     // Gérer les erreurs du flux
-  //     doc.on('error', (err) => {
-  //       console.error('Erreur dans le flux PDF:', err);
-  //       if (!res.headersSent) {
-  //         res
-  //           .status(500)
-  //           .json({ message: 'Erreur lors de la génération du PDF' });
-  //       }
-  //     });
-
-  //     // Sauvegarde locale pour débogage
-  //     const fs = require('fs');
-  //     doc.pipe(fs.createWriteStream(`test_facture_${id}.pdf`));
-  //     console.log(`PDF sauvegardé localement : test_facture_${id}.pdf`);
-
-  //     // Associer le flux PDF à la réponse
-  //     doc.pipe(res);
-
-  //     // Ajouter le logo en arrière-plan (filigrane) sur toutes les pages
-  //     doc.on('pageAdded', () => {
-  //       try {
-  //         doc
-  //           .image('src/uploads/rmlogo.png', 150, 200, {
-  //             width: 300,
-  //             opacity: 0.1, // Faible opacité pour le filigrane
-  //           })
-  //           .restore();
-  //       } catch (error) {
-  //         console.warn('Logo de fond non trouvé, ignoré');
-  //       }
-  //     });
-
-  //     if (type === 'full') {
-  //       // Fonction pour afficher l'en-tête du tableau
-  //       const drawTableHeader = (
-  //         tableTop: number,
-  //         tableLeft: number,
-  //         columnWidths: number[],
-  //       ) => {
-  //         doc.fontSize(10).font('Helvetica-Bold');
-  //         let x = tableLeft;
-  //         const headers = [
-  //           'Désignation',
-  //           'Quantité',
-  //           'Prix Unitaire',
-  //           "Date d'expiration",
-  //           'Montant',
-  //         ];
-  //         headers.forEach((header, i) => {
-  //           doc.text(header, x, tableTop, {
-  //             width: columnWidths[i],
-  //             align: 'center',
-  //           });
-  //           x += columnWidths[i];
-  //         });
-  //         doc
-  //           .moveTo(tableLeft, tableTop + 20)
-  //           .lineTo(
-  //             tableLeft + columnWidths.reduce((a, b) => a + b, 0),
-  //             tableTop + 20,
-  //           )
-  //           .stroke();
-  //       };
-
-  //       // En-tête réorganisé
-  //       const headerTop = 40;
-  //       const headerHeight = 80;
-  //       const pageWidth = 595.28; // Largeur A4
-  //       const margin = 40;
-  //       const sectionWidth = (pageWidth - 2 * margin) / 3; // Trois sections égales
-
-  //       // Section 1 : Alliance Pharma (gauche)
-  //       doc
-  //         .rect(margin, headerTop, sectionWidth, headerHeight)
-  //         .strokeColor('black')
-  //         .stroke();
-  //       doc.fontSize(10).font('Helvetica-Bold');
-  //       doc.text('ALLIANCE PHARMA', margin + 10, headerTop + 10, {
-  //         width: sectionWidth - 20,
-  //         align: 'center',
-  //       });
-  //       doc.fontSize(8).font('Helvetica');
-  //       doc.text('Tel: 80130610', margin + 10, headerTop + 25, {
-  //         width: sectionWidth - 20,
-  //         align: 'center',
-  //       });
-  //       doc.text(
-  //         'RCCM: NE/NIM/01/2024/B14/00004',
-  //         margin + 10,
-  //         headerTop + 35,
-  //         {
-  //           width: sectionWidth - 20,
-  //           align: 'center',
-  //         },
-  //       );
-  //       doc.text('NIF: 37364/R', margin + 10, headerTop + 45, {
-  //         width: sectionWidth - 20,
-  //         align: 'center',
-  //       });
-  //       doc.text('BP: 11807', margin + 10, headerTop + 55, {
-  //         width: sectionWidth - 20,
-  //         align: 'center',
-  //       });
-  //       doc.text('Adresse: NIAMEY', margin + 10, headerTop + 65, {
-  //         width: sectionWidth - 20,
-  //         align: 'center',
-  //       });
-
-  //       // Section 2 : Logo (milieu)
-  //       doc
-  //         .rect(margin + sectionWidth, headerTop, sectionWidth, headerHeight)
-  //         .strokeColor('black')
-  //         .stroke();
-  //       try {
-  //         doc.image(
-  //           'src/uploads/rmlogo.png',
-  //           margin + sectionWidth + (sectionWidth - 90) / 2,
-  //           headerTop + 10,
-  //           {
-  //             width: 90,
-  //           },
-  //         );
-  //       } catch (error) {
-  //         console.warn('Logo non trouvé, placeholder utilisé');
-  //         doc
-  //           .fontSize(10)
-  //           .font('Helvetica-Bold')
-  //           .text('LOGO', margin + sectionWidth + 10, headerTop + 40, {
-  //             width: sectionWidth - 20,
-  //             align: 'center',
-  //           });
-  //       }
-
-  //       // Section 3 : Numéro facture et date (droite)
-  //       doc
-  //         .rect(
-  //           margin + 2 * sectionWidth,
-  //           headerTop,
-  //           sectionWidth,
-  //           headerHeight,
-  //         )
-  //         .strokeColor('black')
-  //         .stroke();
-  //       doc.fontSize(10).font('Helvetica-Bold');
-  //       doc.text(
-  //         `FACTURE DE VENTE N° ${sanitizeString(commande.id_commande_vente.toString())}`,
-  //         margin + 2 * sectionWidth + 10,
-  //         headerTop + 10,
-  //         { width: sectionWidth - 20, align: 'center' },
-  //       );
-  //       doc.fontSize(8).font('Helvetica');
-  //       doc.text(
-  //         `Date: ${formatDate(commande.date_commande_vente)}`,
-  //         margin + 2 * sectionWidth + 10,
-  //         headerTop + 30,
-  //         { width: sectionWidth - 20, align: 'center' },
-  //       );
-
-  //       // Traits verticaux pour séparer les sections
-  //       doc
-  //         .moveTo(margin + sectionWidth, headerTop)
-  //         .lineTo(margin + sectionWidth, headerTop + headerHeight)
-  //         .stroke();
-  //       doc
-  //         .moveTo(margin + 2 * sectionWidth, headerTop)
-  //         .lineTo(margin + 2 * sectionWidth, headerTop + headerHeight)
-  //         .stroke();
-
-  //       // Ligne de séparation sous l'en-tête
-  //       doc
-  //         .moveTo(margin, headerTop + headerHeight + 10)
-  //         .lineTo(pageWidth - margin, headerTop + headerHeight + 10)
-  //         .stroke();
-
-  //       // Infos utilisateur connecté et client (côte à côte)
-  //       const infoTop = headerTop + headerHeight + 20;
-  //       doc.fontSize(8).font('Helvetica');
-  //       doc.text(`Login: ${sanitizeString(commande.login)}`, margin, infoTop);
-
-  //       // Infos client (à droite)
-  //       const clientX = margin + 300;
-  //       doc.text(
-  //         `Client: ${sanitizeString(commande.client?.nom)}`,
-  //         clientX,
-  //         infoTop,
-  //       );
-  //       doc.text(
-  //         `NIF: ${sanitizeString(commande.client?.nif)}`,
-  //         clientX,
-  //         infoTop + 15,
-  //       );
-  //       doc.text(
-  //         `Adresse: ${sanitizeString(commande.client?.adresse)}`,
-  //         clientX,
-  //         infoTop + 30,
-  //       );
-  //       doc.text(
-  //         `Téléphone: ${sanitizeString(commande.client?.telephone)}`,
-  //         clientX,
-  //         infoTop + 45,
-  //       );
-
-  //       // Tableau des produits
-  //       const tableTop = infoTop + 60;
-  //       const tableLeft = margin;
-  //       const columnWidths = [200, 80, 80, 100, 80];
-  //       const rowHeight = 20;
-  //       const maxY = 750; // Hauteur maximale de la page (A4 - marges)
-
-  //       // En-tête du tableau
-  //       drawTableHeader(tableTop, tableLeft, columnWidths);
-
-  //       // Lignes du tableau
-  //       doc.font('Helvetica');
-  //       let y = tableTop + 30;
-  //       let subtotal = 0;
-
-  //       commande.lignes.forEach((ligne) => {
-  //         // Vérifier si on dépasse la page
-  //         if (y + rowHeight > maxY) {
-  //           doc.addPage();
-  //           y = 40; // Nouvelle page, marge haute
-  //           drawTableHeader(y, tableLeft, columnWidths);
-  //           y += 30;
-  //         }
-
-  //         const totalLigne = ligne.montant;
-  //         subtotal += totalLigne;
-  //         let x = tableLeft;
-  //         doc.text(
-  //           sanitizeString(
-  //             ligne.produit?.produit || ligne.designation.toString(),
-  //           ),
-  //           x,
-  //           y,
-  //           { width: columnWidths[0], align: 'left' },
-  //         );
-  //         doc.text(ligne.quantite.toString(), x + columnWidths[0], y, {
-  //           width: columnWidths[1],
-  //           align: 'center',
-  //         });
-  //         doc.text(
-  //           Number(ligne.prix_vente || 0).toFixed(2),
-  //           x + columnWidths[0] + columnWidths[1],
-  //           y,
-  //           { width: columnWidths[2], align: 'center' },
-  //         );
-  //         doc.text(
-  //           formatDate(ligne.produit?.validite_amm),
-  //           x + columnWidths[0] + columnWidths[1] + columnWidths[2],
-  //           y,
-  //           { width: columnWidths[3], align: 'center' },
-  //         );
-  //         doc.text(
-  //           Number(totalLigne || 0).toFixed(2),
-  //           x +
-  //             columnWidths[0] +
-  //             columnWidths[1] +
-  //             columnWidths[2] +
-  //             columnWidths[3],
-  //           y,
-  //           { width: columnWidths[4], align: 'center' },
-  //         );
-  //         y += rowHeight;
-  //       });
-  //       doc
-  //         .moveTo(tableLeft, y)
-  //         .lineTo(tableLeft + columnWidths.reduce((a, b) => a + b, 0), y)
-  //         .stroke();
-
-  //       // Vérifier si le résumé dépasse la page
-  //       let summaryTop = y + 20;
-  //       if (summaryTop + 150 > maxY) {
-  //         doc.addPage();
-  //         summaryTop = 40;
-  //       }
-
-  //       // Résumé
-  //       doc.fontSize(10).font('Helvetica-Bold');
-  //       doc.text('Résumé', margin, summaryTop);
-  //       doc.fontSize(8).font('Helvetica');
-  //       doc.text(
-  //         `Total TVA: ${Number(commande.tva || 0).toFixed(2)} CFA`,
-  //         margin + 300,
-  //         summaryTop + 10,
-  //         { align: 'right' },
-  //       );
-  //       const precompte = Number(commande.isb || 539);
-  //       doc.text(
-  //         `Précompte BIC [A] 2%: ${precompte.toFixed(2)} CFA`,
-  //         margin + 300,
-  //         summaryTop + 25,
-  //         { align: 'right' },
-  //       );
-  //       doc.text(
-  //         `Total TTC: ${Number(commande.montant_total || 0).toFixed(2)} CFA`,
-  //         margin + 300,
-  //         summaryTop + 40,
-  //         { align: 'right' },
-  //       );
-  //       doc.text(
-  //         `Moyen de paiement: ${sanitizeString(this.typeReglementMapping[commande.type_reglement] || commande.type_reglement)}`,
-  //         margin + 300,
-  //         summaryTop + 55,
-  //         { align: 'right' },
-  //       );
-  //       doc.text(
-  //         `Nombre d'articles: ${commande.lignes.length}`,
-  //         margin + 300,
-  //         summaryTop + 70,
-  //         { align: 'right' },
-  //       );
-  //       doc.text('* Montants en francs CFA', margin + 300, summaryTop + 85, {
-  //         align: 'right',
-  //       });
-  //       doc.text(
-  //         `Arrêté la présente facture à ${numberToWordsFr(Number(commande.montant_total || 0))} francs CFA`,
-  //         margin,
-  //         summaryTop + 100,
-  //       );
-  //       doc.text('Le Gestionnaire', margin, summaryTop + 115, {
-  //         underline: true,
-  //       });
-
-  //       doc
-  //         .moveTo(margin, summaryTop + 130)
-  //         .lineTo(pageWidth - margin, summaryTop + 130)
-  //         .stroke();
-  //     } else {
-  //       // PDF Simplifié
-  //       doc.fontSize(10).font('Helvetica-Bold');
-  //       doc.text(
-  //         `FACTURE DE VENTE N° ${sanitizeString(commande.id_commande_vente.toString())}`,
-  //         50,
-  //         50,
-  //       );
-  //       doc.fontSize(8).font('Helvetica');
-  //       doc.text(`Date: ${formatDate(commande.date_commande_vente)}`, 50, 65);
-  //       doc.text(`Client: ${sanitizeString(commande.client?.nom)}`, 50, 80);
-
-  //       doc.fontSize(8);
-  //       const tableTop = 110;
-  //       const tableLeft = 50;
-  //       const rowHeight = 20;
-  //       const maxY = 750;
-
-  //       doc.font('Helvetica-Bold');
-  //       doc.text('Désignation', tableLeft, tableTop, { width: 200 });
-  //       doc.text('Quantité', tableLeft + 200, tableTop, {
-  //         width: 100,
-  //         align: 'right',
-  //       });
-  //       doc.text('Montant', tableLeft + 300, tableTop, {
-  //         width: 100,
-  //         align: 'right',
-  //       });
-  //       doc
-  //         .moveTo(tableLeft, tableTop + 15)
-  //         .lineTo(450, tableTop + 15)
-  //         .stroke();
-
-  //       let y = tableTop + rowHeight;
-  //       let subtotal = 0;
-
-  //       doc.font('Helvetica');
-  //       commande.lignes.forEach((ligne) => {
-  //         if (y + rowHeight > maxY) {
-  //           doc.addPage();
-  //           y = 40;
-  //           doc.fontSize(8).font('Helvetica-Bold');
-  //           doc.text('Désignation', tableLeft, y, { width: 200 });
-  //           doc.text('Quantité', tableLeft + 200, y, {
-  //             width: 100,
-  //             align: 'right',
-  //           });
-  //           doc.text('Montant', tableLeft + 300, y, {
-  //             width: 100,
-  //             align: 'right',
-  //           });
-  //           doc
-  //             .moveTo(tableLeft, y + 15)
-  //             .lineTo(450, y + 15)
-  //             .stroke();
-  //           y += rowHeight;
-  //         }
-
-  //         const totalLigne = ligne.montant;
-  //         subtotal += totalLigne;
-  //         doc.fontSize(8).font('Helvetica');
-  //         doc.text(
-  //           sanitizeString(
-  //             ligne.produit?.produit || ligne.designation.toString(),
-  //           ),
-  //           tableLeft,
-  //           y,
-  //           { width: 200 },
-  //         );
-  //         doc.text(ligne.quantite.toString(), tableLeft + 200, y, {
-  //           width: 100,
-  //           align: 'right',
-  //         });
-  //         doc.text(Number(totalLigne || 0).toFixed(2), tableLeft + 300, y, {
-  //           width: 100,
-  //           align: 'right',
-  //         });
-  //         y += rowHeight;
-  //       });
-
-  //       doc.moveTo(tableLeft, y).lineTo(450, y).stroke();
-
-  //       let totalTop = y + 20;
-  //       if (totalTop + 20 > maxY) {
-  //         doc.addPage();
-  //         totalTop = 40;
-  //       }
-
-  //       doc.fontSize(10).font('Helvetica-Bold');
-  //       doc.text(
-  //         `TOTAL TTC: ${Number(commande.montant_total || 0).toFixed(2)} CFA`,
-  //         450,
-  //         totalTop,
-  //         { align: 'right' },
-  //       );
-  //     }
-
-  //     // Finaliser le document
-  //     console.log('Finalisation du PDF pour commande', id);
-  //     doc.end();
-
-  //     // Mettre à jour la commande
-  //     commande.imprimee = 1;
-  //     await this.commandeVenteRepository.save(commande);
   //   } catch (error) {
-  //     console.error(
-  //       'Erreur lors de la génération du PDF:',
-  //       JSON.stringify(error, null, 2),
-  //     );
-  //     if (!res.headersSent) {
-  //       res.status(500).json({
-  //         message: `Erreur lors de la génération du PDF: ${error.message}`,
+  //     doc
+  //       .fontSize(10)
+  //       .font('Helvetica-Bold')
+  //       .text('LOGO', this.MARGINS + sectionWidth + 10, headerTop + 40, {
+  //         width: sectionWidth - 20,
+  //         align: 'center',
   //       });
-  //     }
-  //     throw new BadRequestException(
-  //       `Erreur lors de la génération du PDF: ${error.message}`,
-  //     );
   //   }
+
+  //   // Section 3: Numéro et date
+  //   doc
+  //     .rect(
+  //       this.MARGINS + 2 * sectionWidth,
+  //       headerTop,
+  //       sectionWidth,
+  //       this.HEADER_HEIGHT,
+  //     )
+  //     .strokeColor('black')
+  //     .stroke();
+  //   doc.fontSize(6).font('Helvetica-Bold');
+  //   const documentTitle =
+  //     type === 'bl'
+  //       ? 'BON DE LIVRAISON'
+  //       : type === 'bp'
+  //         ? 'BON DE PRÉPARATION'
+  //         : 'FACTURE DE VENTE';
+  //   doc.text(
+  //     `${documentTitle} N° ${sanitizeString(commande.numero_facture_certifiee || commande.id_commande_vente.toString())}`,
+  //     this.MARGINS + 2 * sectionWidth + 10,
+  //     headerTop + 10,
+  //     { width: sectionWidth - 20, align: 'center' },
+  //   );
+  //   doc.fontSize(8).font('Helvetica');
+  //   doc.text(
+  //     `Date: ${formatDate(commande.date_commande_vente)}`,
+  //     this.MARGINS + 2 * sectionWidth + 10,
+  //     headerTop + 30,
+  //     {
+  //       width: sectionWidth - 20,
+  //       align: 'center',
+  //     },
+  //   );
+
+  //   // Séparateurs
+  //   doc
+  //     .moveTo(this.MARGINS + sectionWidth, headerTop)
+  //     .lineTo(this.MARGINS + sectionWidth, headerTop + this.HEADER_HEIGHT)
+  //     .stroke();
+  //   doc
+  //     .moveTo(this.MARGINS + 2 * sectionWidth, headerTop)
+  //     .lineTo(this.MARGINS + 2 * sectionWidth, headerTop + this.HEADER_HEIGHT)
+  //     .stroke();
+  //   doc
+  //     .moveTo(this.MARGINS, headerTop + this.HEADER_HEIGHT + 10)
+  //     .lineTo(
+  //       this.PAGE_WIDTH - this.MARGINS,
+  //       headerTop + this.HEADER_HEIGHT + 10,
+  //     )
+  //     .stroke();
+
+  //   // Infos utilisateur et client
+  //   const infoTop = headerTop + this.HEADER_HEIGHT + 20;
+  //   doc.fontSize(8).font('Helvetica');
+  //   doc.text(`Login: ${sanitizeString(commande.login)}`, this.MARGINS, infoTop);
+  //   const clientX = this.MARGINS + 400;
+  //   doc.text(
+  //     `Client: ${sanitizeString(commande.client?.nom || 'N/A')}`,
+  //     clientX,
+  //     infoTop,
+  //   );
+  //   doc.text(
+  //     `NIF: ${sanitizeString(commande.client?.nif || 'N/A')}`,
+  //     clientX,
+  //     infoTop + 15,
+  //   );
+  //   doc.text(
+  //     `Adresse: ${sanitizeString(commande.client?.adresse || 'N/A')}`,
+  //     clientX,
+  //     infoTop + 30,
+  //   );
+  //   doc.text(
+  //     `Téléphone: ${sanitizeString(commande.client?.telephone || 'N/A')}`,
+  //     clientX,
+  //     infoTop + 45,
+  //   );
   // }
+
+  private drawHeader(doc: PDFDocument, commande: any, type: string): number {
+    const headerTop = 40;
+    const sectionWidth = (this.PAGE_WIDTH - 2 * this.MARGINS) / 3;
+
+    // Section 1: Alliance Pharma
+    doc
+      .rect(this.MARGINS, headerTop, sectionWidth, this.HEADER_HEIGHT)
+      .strokeColor('black')
+      .stroke();
+    doc.fontSize(10).font('Helvetica-Bold');
+    doc.text('ALLIANCE PHARMA', this.MARGINS + 10, headerTop + 10, {
+      width: sectionWidth - 20,
+      align: 'center',
+    });
+    doc.fontSize(8).font('Helvetica');
+    doc.text('Tel: 80130610', this.MARGINS + 10, headerTop + 25, {
+      width: sectionWidth - 20,
+      align: 'center',
+    });
+    doc.text(
+      'RCCM: NE/NIM/01/2024/B14/00004',
+      this.MARGINS + 10,
+      headerTop + 35,
+      {
+        width: sectionWidth - 20,
+        align: 'center',
+      },
+    );
+    doc.text('NIF: 37364/R', this.MARGINS + 10, headerTop + 45, {
+      width: sectionWidth - 20,
+      align: 'center',
+    });
+    doc.text('BP: 11807', this.MARGINS + 10, headerTop + 55, {
+      width: sectionWidth - 20,
+      align: 'center',
+    });
+    doc.text('Adresse: NIAMEY', this.MARGINS + 10, headerTop + 65, {
+      width: sectionWidth - 20,
+      align: 'center',
+    });
+
+    // Section 2: Logo
+    doc
+      .rect(
+        this.MARGINS + sectionWidth,
+        headerTop,
+        sectionWidth,
+        this.HEADER_HEIGHT,
+      )
+      .strokeColor('black')
+      .stroke();
+    try {
+      doc.image(
+        'src/uploads/rmlogo.png',
+        this.MARGINS + sectionWidth + (sectionWidth - 90) / 2,
+        headerTop + 10,
+        {
+          width: 90,
+        },
+      );
+    } catch (error) {
+      doc
+        .fontSize(10)
+        .font('Helvetica-Bold')
+        .text('LOGO', this.MARGINS + sectionWidth + 10, headerTop + 40, {
+          width: sectionWidth - 20,
+          align: 'center',
+        });
+    }
+
+    // Section 3: Numéro et date
+    doc
+      .rect(
+        this.MARGINS + 2 * sectionWidth,
+        headerTop,
+        sectionWidth,
+        this.HEADER_HEIGHT,
+      )
+      .strokeColor('black')
+      .stroke();
+    doc.fontSize(8).font('Helvetica-Bold');
+    const documentTitle =
+      type === 'bl'
+        ? 'BON DE LIVRAISON'
+        : type === 'bp'
+          ? 'BON DE PRÉPARATION'
+          : 'FACTURE DE VENTE';
+    doc.text(
+      `${documentTitle} N° ${sanitizeString(commande.id_commande_vente.toString())}`,
+      this.MARGINS + 2 * sectionWidth + 10,
+      headerTop + 10,
+      { width: sectionWidth - 20, align: 'center' },
+    );
+    doc.fontSize(8).font('Helvetica');
+    doc.text(
+      `Date: ${formatDate(commande.date_commande_vente)}`,
+      this.MARGINS + 2 * sectionWidth + 10,
+      headerTop + 30,
+      {
+        width: sectionWidth - 20,
+        align: 'center',
+      },
+    );
+
+    // Séparateurs verticaux
+    doc
+      .moveTo(this.MARGINS + sectionWidth, headerTop)
+      .lineTo(this.MARGINS + sectionWidth, headerTop + this.HEADER_HEIGHT)
+      .stroke();
+    doc
+      .moveTo(this.MARGINS + 2 * sectionWidth, headerTop)
+      .lineTo(this.MARGINS + 2 * sectionWidth, headerTop + this.HEADER_HEIGHT)
+      .stroke();
+
+    // Ligne de séparation sous l'en-tête
+    const separatorY = headerTop + this.HEADER_HEIGHT + 10;
+    doc
+      .moveTo(this.MARGINS, separatorY)
+      .lineTo(this.PAGE_WIDTH - this.MARGINS, separatorY)
+      .stroke();
+
+    // Informations utilisateur et client - AVEC ESPACEMENT APPROPRIÉ
+    const infoTop = separatorY + 15; // 15px après la ligne de séparation
+    doc.fontSize(8).font('Helvetica');
+
+    // Colonne de gauche - Informations utilisateur
+    doc.text(`Login: ${sanitizeString(commande.login)}`, this.MARGINS, infoTop);
+
+    // Colonne de droite - Informations client
+    const clientX = this.MARGINS + 300; // Position fixe pour éviter les chevauchements
+    doc.text(
+      `Client: ${sanitizeString(commande.client?.nom || 'N/A')}`,
+      clientX,
+      infoTop,
+    );
+    doc.text(
+      `NIF: ${sanitizeString(commande.client?.nif || 'N/A')}`,
+      clientX,
+      infoTop + 12,
+    );
+    doc.text(
+      `Adresse: ${sanitizeString(commande.client?.adresse || 'N/A')}`,
+      clientX,
+      infoTop + 24,
+    );
+    doc.text(
+      `Téléphone: ${sanitizeString(commande.client?.telephone || 'N/A')}`,
+      clientX,
+      infoTop + 36,
+    );
+
+    // Retourner la position Y où le tableau peut commencer
+    return infoTop + 55; // 55px après le début des infos pour laisser de l'espace
+  }
+
+  // private drawFullInvoice(doc: PDFDocument, commande: any): void {
+  //   const tableTop = 160;
+  //   const tableLeft = this.MARGINS;
+  //   const columnWidths = [200, 80, 80, 80, 100, 80];
+
+  //   // En-tête du tableau
+  //   this.drawTableHeader(doc, tableTop, tableLeft, columnWidths, [
+  //     'Désignation',
+  //     'Quantité',
+  //     'Prix Unitaire',
+  //     'Remise',
+  //     "Date d'expiration",
+  //     'Montant',
+  //   ]);
+
+  //   // Lignes
+  //   let y = tableTop + 30;
+  //   let subtotal = 0;
+  //   commande.lignes.forEach((ligne: any) => {
+  //     if (y + this.ROW_HEIGHT > this.MAX_Y) {
+  //       doc.addPage();
+  //       y = 40;
+  //       this.drawTableHeader(doc, y, tableLeft, columnWidths, [
+  //         'Désignation',
+  //         'Quantité',
+  //         'Prix Unitaire',
+  //         'Remise',
+  //         "Date d'expiration",
+  //         'Montant',
+  //       ]);
+  //       y += 30;
+  //     }
+
+  //     const totalLigne =
+  //       ligne.montant ||
+  //       ligne.prix_vente * ligne.quantite * (1 - (ligne.remise || 0) / 100);
+  //     subtotal += totalLigne;
+  //     let x = tableLeft;
+  //     doc.text(
+  //       sanitizeString(
+  //         ligne.produit?.produit || ligne.designation?.toString() || 'N/A',
+  //       ),
+  //       x,
+  //       y,
+  //       { width: columnWidths[0], align: 'left' },
+  //     );
+  //     x += columnWidths[0];
+  //     doc.text(ligne.quantite.toString(), x, y, {
+  //       width: columnWidths[1],
+  //       align: 'center',
+  //     });
+  //     x += columnWidths[1];
+  //     doc.text(Number(ligne.prix_vente || 0).toFixed(2), x, y, {
+  //       width: columnWidths[2],
+  //       align: 'center',
+  //     });
+  //     x += columnWidths[2];
+  //     doc.text(Number(ligne.remise || 0).toFixed(2), x, y, {
+  //       width: columnWidths[3],
+  //       align: 'center',
+  //     });
+  //     x += columnWidths[3];
+  //     doc.text(formatDate(ligne.produit?.validite_amm), x, y, {
+  //       width: columnWidths[4],
+  //       align: 'center',
+  //     });
+  //     x += columnWidths[4];
+  //     doc.text(Number(totalLigne).toFixed(2), x, y, {
+  //       width: columnWidths[5],
+  //       align: 'center',
+  //     });
+  //     y += this.ROW_HEIGHT;
+  //   });
+
+  //   doc
+  //     .moveTo(tableLeft, y)
+  //     .lineTo(tableLeft + columnWidths.reduce((a, b) => a + b, 0), y)
+  //     .stroke();
+
+  //   // Résumé
+  //   const summaryTop = y + 20 > this.MAX_Y ? (doc.addPage(), 40) : y + 20;
+  //   const financials = this.calculateFinancials(commande);
+  //   this.drawSummary(doc, summaryTop, financials, commande);
+  // }
+
+  private drawFullInvoice(doc: PDFDocument, commande: any): void {
+    // Récupérer la position Y après l'en-tête
+    const tableTop = this.drawHeader(doc, commande, 'full');
+    const tableLeft = this.MARGINS;
+    const columnWidths = [200, 60, 70, 60, 80, 70]; // Ajusté pour éviter débordement
+
+    // En-tête du tableau
+    this.drawTableHeader(doc, tableTop, tableLeft, columnWidths, [
+      'Désignation',
+      'Qté',
+      'P.U.',
+      'Remise',
+      'Expiration',
+      'Montant',
+    ]);
+
+    // Lignes du tableau
+    let y = tableTop + 25; // Espace après l'en-tête du tableau
+    let subtotal = 0;
+
+    doc.fontSize(8).font('Helvetica'); // Taille plus petite pour éviter débordement
+
+    commande.lignes.forEach((ligne: any) => {
+      if (y + this.ROW_HEIGHT > this.MAX_Y - 100) {
+        // Garder 100px pour le résumé
+        doc.addPage();
+        const newTableTop = this.drawHeader(doc, commande, 'full');
+        this.drawTableHeader(doc, newTableTop, tableLeft, columnWidths, [
+          'Désignation',
+          'Qté',
+          'P.U.',
+          'Remise',
+          'Expiration',
+          'Montant',
+        ]);
+        y = newTableTop + 25;
+      }
+
+      const totalLigne = ligne.prix_vente * ligne.quantite;
+      subtotal += totalLigne;
+
+      let x = tableLeft;
+      // Désignation (tronquée si trop longue)
+      const designation = sanitizeString(
+        ligne.produit?.produit || ligne.designation?.toString() || 'N/A',
+      );
+      doc.text(designation.substring(0, 35), x, y, {
+        width: columnWidths[0],
+        align: 'left',
+      });
+      x += columnWidths[0];
+
+      // Quantité
+      doc.text(ligne.quantite.toString(), x, y, {
+        width: columnWidths[1],
+        align: 'center',
+      });
+      x += columnWidths[1];
+
+      // Prix unitaire
+      doc.text(Number(ligne.prix_vente || 0).toFixed(2), x, y, {
+        width: columnWidths[2],
+        align: 'right',
+      });
+      x += columnWidths[2];
+
+      // Remise
+      doc.text(Number(ligne.remise || 0).toFixed(2), x, y, {
+        width: columnWidths[3],
+        align: 'right',
+      });
+      x += columnWidths[3];
+
+      // Date d'expiration (format court)
+      const dateExp = ligne.produit?.validite_amm
+        ? new Date(ligne.produit.validite_amm).toLocaleDateString('fr-FR', {
+            day: '2-digit',
+            month: '2-digit',
+            year: '2-digit',
+          })
+        : 'N/A';
+      doc.text(dateExp, x, y, {
+        width: columnWidths[4],
+        align: 'center',
+      });
+      x += columnWidths[4];
+
+      // Montant total ligne
+      doc.text(Number(totalLigne).toFixed(2), x, y, {
+        width: columnWidths[5],
+        align: 'right',
+      });
+
+      y += this.ROW_HEIGHT;
+    });
+
+    // Ligne de fermeture du tableau
+    doc
+      .moveTo(tableLeft, y)
+      .lineTo(tableLeft + columnWidths.reduce((a, b) => a + b, 0), y)
+      .stroke();
+
+    // Résumé financier - avec espace approprié
+    const summaryTop = y + 20;
+    if (summaryTop > this.MAX_Y - 150) {
+      doc.addPage();
+      this.drawFinancialSummary(doc, 40, commande);
+    } else {
+      this.drawFinancialSummary(doc, summaryTop, commande);
+    }
+  }
+
+  private drawFinancialSummary(
+    doc: PDFDocument,
+    summaryTop: number,
+    commande: any,
+  ): void {
+    // Calculs basés sur les données de la commande (corrigés selon ta logique)
+    const montantHT = commande.lignes.reduce(
+      (sum: number, ligne: any) => sum + ligne.prix_vente * ligne.quantite,
+      0,
+    );
+    const remise = Number(commande.remise || 0);
+    const montantNetHT = montantHT - remise;
+    const tva = Number(commande.tva || 0);
+    const isb = Number(commande.isb || 0);
+    const timbreFiscal = 200;
+    const totalTTC = montantNetHT + tva + isb + timbreFiscal;
+
+    // Titre
+    doc.fontSize(12).font('Helvetica-Bold');
+    doc.text('RÉSUMÉ FINANCIER', this.MARGINS, summaryTop);
+
+    // Ligne de séparation
+    doc
+      .moveTo(this.MARGINS, summaryTop + 15)
+      .lineTo(this.PAGE_WIDTH - this.MARGINS, summaryTop + 15)
+      .stroke();
+
+    let currentY = summaryTop + 25;
+    doc.fontSize(9).font('Helvetica');
+
+    // Montant HT initial
+    doc.text('Montant HT:', this.MARGINS, currentY);
+    doc.text(
+      `${montantHT.toFixed(2)} CFA`,
+      this.PAGE_WIDTH - this.MARGINS - 100,
+      currentY,
+      { align: 'right' },
+    );
+    currentY += 15;
+
+    // Remise (si > 0)
+    if (remise > 0) {
+      doc.text('Remise:', this.MARGINS, currentY);
+      doc.text(
+        `-${remise.toFixed(2)} CFA`,
+        this.PAGE_WIDTH - this.MARGINS - 100,
+        currentY,
+        { align: 'right' },
+      );
+      currentY += 15;
+
+      // Net HT après remise
+      doc.text('Net HT:', this.MARGINS, currentY);
+      doc.text(
+        `${montantNetHT.toFixed(2)} CFA`,
+        this.PAGE_WIDTH - this.MARGINS - 100,
+        currentY,
+        { align: 'right' },
+      );
+      currentY += 15;
+    }
+
+    // TVA (si > 0)
+    if (tva > 0) {
+      const tauxTVA =
+        montantNetHT > 0 ? ((tva / montantNetHT) * 100).toFixed(0) : '0';
+      doc.text(`TVA (${tauxTVA}%):`, this.MARGINS, currentY);
+      doc.text(
+        `${tva.toFixed(2)} CFA`,
+        this.PAGE_WIDTH - this.MARGINS - 100,
+        currentY,
+        { align: 'right' },
+      );
+      currentY += 15;
+    }
+
+    // ISB/Précompte
+    if (isb > 0) {
+      doc.text('ISB/Précompte (2%):', this.MARGINS, currentY);
+      doc.text(
+        `${isb.toFixed(2)} CFA`,
+        this.PAGE_WIDTH - this.MARGINS - 100,
+        currentY,
+        { align: 'right' },
+      );
+      currentY += 15;
+    }
+
+    // Timbre fiscal
+    doc.text('Timbre Fiscal:', this.MARGINS, currentY);
+    doc.text(
+      `${timbreFiscal.toFixed(2)} CFA`,
+      this.PAGE_WIDTH - this.MARGINS - 100,
+      currentY,
+      { align: 'right' },
+    );
+    currentY += 20;
+
+    // Ligne de séparation avant total
+    doc
+      .moveTo(this.MARGINS, currentY)
+      .lineTo(this.PAGE_WIDTH - this.MARGINS, currentY)
+      .stroke();
+    currentY += 10;
+
+    // Total TTC (en gras)
+    doc.fontSize(11).font('Helvetica-Bold');
+    doc.text('TOTAL TTC:', this.MARGINS, currentY);
+    doc.text(
+      `${totalTTC.toFixed(2)} CFA`,
+      this.PAGE_WIDTH - this.MARGINS - 100,
+      currentY,
+      { align: 'right' },
+    );
+    currentY += 25;
+
+    // Informations complémentaires
+    doc.fontSize(8).font('Helvetica');
+    doc.text(
+      `Moyen de paiement: ${sanitizeString(commande.type_reglement || 'E')}`,
+      this.MARGINS,
+      currentY,
+    );
+    currentY += 12;
+    doc.text(
+      `Nombre d'articles: ${commande.lignes.length}`,
+      this.MARGINS,
+      currentY,
+    );
+    currentY += 12;
+    doc.text('* Montants en francs CFA', this.MARGINS, currentY);
+    currentY += 20;
+
+    // Conversion en lettres
+    doc.fontSize(9).font('Helvetica-Bold');
+    doc.text(
+      'Arrêté la présente facture à la somme de :',
+      this.MARGINS,
+      currentY,
+    );
+    currentY += 15;
+    doc.fontSize(9).font('Helvetica');
+    doc.text(
+      `${numberToWordsFr(totalTTC)} francs CFA`,
+      this.MARGINS,
+      currentY,
+      {
+        width: this.PAGE_WIDTH - 2 * this.MARGINS,
+        align: 'center',
+      },
+    );
+    currentY += 25;
+
+    // Signature
+    doc.fontSize(9).font('Helvetica-Bold');
+    doc.text('Le Gestionnaire', this.MARGINS, currentY, { underline: true });
+
+    // Ligne finale
+    doc
+      .moveTo(this.MARGINS, currentY + 20)
+      .lineTo(this.PAGE_WIDTH - this.MARGINS, currentY + 20)
+      .stroke();
+  }
+  private drawSimpleInvoice(doc: PDFDocument, commande: any): void {
+    const tableTop = 110;
+    const tableLeft = 50;
+    const columnWidths = [250, 50, 70, 80];
+
+    // En-tête du tableau
+    this.drawTableHeader(doc, tableTop, tableLeft, columnWidths, [
+      'Désignation',
+      'Qté',
+      'P.U.',
+      'Total',
+    ]);
+
+    // Lignes
+    let y = tableTop + 30;
+    let subtotal = 0;
+    commande.lignes.forEach((ligne: any) => {
+      if (y + this.ROW_HEIGHT > this.MAX_Y) {
+        doc.addPage();
+        y = 40;
+        this.drawTableHeader(doc, y, tableLeft, columnWidths, [
+          'Désignation',
+          'Qté',
+          'P.U.',
+          'Total',
+        ]);
+        y += 30;
+      }
+
+      const totalLigne = ligne.montant || ligne.prix_vente * ligne.quantite;
+      subtotal += totalLigne;
+      let x = tableLeft;
+      doc.text(
+        sanitizeString(
+          ligne.produit?.produit || ligne.designation?.toString() || 'N/A',
+        ),
+        x,
+        y,
+        { width: columnWidths[0], align: 'left' },
+      );
+      x += columnWidths[0];
+      doc.text(ligne.quantite.toString(), x, y, {
+        width: columnWidths[1],
+        align: 'center',
+      });
+      x += columnWidths[1];
+      doc.text(Number(ligne.prix_vente || 0).toFixed(2), x, y, {
+        width: columnWidths[2],
+        align: 'right',
+      });
+      x += columnWidths[2];
+      doc.text(Number(totalLigne).toFixed(2), x, y, {
+        width: columnWidths[3],
+        align: 'right',
+      });
+      y += this.ROW_HEIGHT;
+    });
+
+    doc
+      .moveTo(tableLeft, y)
+      .lineTo(tableLeft + columnWidths.reduce((a, b) => a + b, 0), y)
+      .stroke();
+
+    // Résumé
+    const summaryTop = y + 20 > this.MAX_Y ? (doc.addPage(), 40) : y + 20;
+    const financials = this.calculateFinancials(commande);
+    this.drawSimpleSummary(doc, summaryTop, financials);
+  }
+
+  // private drawDeliveryNote(doc: PDFDocument, commande: any): void {
+  //   const tableTop = 160;
+  //   const tableLeft = this.MARGINS;
+  //   const columnWidths = [300, 80, 120];
+
+  //   // En-tête du tableau
+  //   this.drawTableHeader(doc, tableTop, tableLeft, columnWidths, [
+  //     'Désignation',
+  //     'Quantité',
+  //     "Date d'expiration",
+  //   ]);
+
+  //   // Lignes
+  //   let y = tableTop + 30;
+  //   commande.lignes.forEach((ligne: any) => {
+  //     if (y + this.ROW_HEIGHT > this.MAX_Y) {
+  //       doc.addPage();
+  //       y = 40;
+  //       this.drawTableHeader(doc, y, tableLeft, columnWidths, [
+  //         'Désignation',
+  //         'Quantité',
+  //         "Date d'expiration",
+  //       ]);
+  //       y += 30;
+  //     }
+
+  //     let x = tableLeft;
+  //     doc.text(
+  //       sanitizeString(
+  //         ligne.produit?.produit || ligne.designation?.toString() || 'N/A',
+  //       ),
+  //       x,
+  //       y,
+  //       { width: columnWidths[0], align: 'left' },
+  //     );
+  //     x += columnWidths[0];
+  //     doc.text(ligne.quantite.toString(), x, y, {
+  //       width: columnWidths[1],
+  //       align: 'center',
+  //     });
+  //     x += columnWidths[1];
+  //     doc.text(formatDate(ligne.produit?.validite_amm), x, y, {
+  //       width: columnWidths[2],
+  //       align: 'center',
+  //     });
+  //     y += this.ROW_HEIGHT;
+  //   });
+
+  //   doc
+  //     .moveTo(tableLeft, y)
+  //     .lineTo(tableLeft + columnWidths.reduce((a, b) => a + b, 0), y)
+  //     .stroke();
+
+  //   // Résumé
+  //   const summaryTop = y + 20 > this.MAX_Y ? (doc.addPage(), 40) : y + 20;
+  //   doc.fontSize(10).font('Helvetica-Bold');
+  //   doc.text('Résumé', this.MARGINS, summaryTop);
+  //   doc.fontSize(8).font('Helvetica');
+  //   doc.text(
+  //     `Nombre d'articles: ${commande.lignes.length}`,
+  //     this.MARGINS,
+  //     summaryTop + 15,
+  //   );
+  //   doc.text('Le Gestionnaire', this.MARGINS, summaryTop + 30, {
+  //     underline: true,
+  //   });
+  //   doc
+  //     .moveTo(this.MARGINS, summaryTop + 50)
+  //     .lineTo(this.PAGE_WIDTH - this.MARGINS, summaryTop + 50)
+  //     .stroke();
+  // }
+
+  private drawDeliveryNote(doc: PDFDocument, commande: any): void {
+    // Utiliser la position dynamique après l'en-tête
+    const tableTop = this.drawHeader(doc, commande, 'bl');
+    const tableLeft = this.MARGINS;
+    const columnWidths = [280, 80, 120]; // Ajusté pour meilleur équilibre
+
+    // En-tête du tableau
+    this.drawTableHeader(doc, tableTop, tableLeft, columnWidths, [
+      'Désignation',
+      'Quantité',
+      "Date d'expiration",
+    ]);
+
+    // Lignes du tableau
+    let y = tableTop + 25; // Espace après l'en-tête du tableau
+    doc.fontSize(8).font('Helvetica'); // Taille appropriée
+
+    commande.lignes.forEach((ligne: any) => {
+      // Vérifier si on a besoin d'une nouvelle page
+      if (y + this.ROW_HEIGHT > this.MAX_Y - 80) {
+        // Garder 80px pour le résumé
+        doc.addPage();
+        const newTableTop = this.drawHeader(doc, commande, 'bl');
+        this.drawTableHeader(doc, newTableTop, tableLeft, columnWidths, [
+          'Désignation',
+          'Quantité',
+          "Date d'expiration",
+        ]);
+        y = newTableTop + 25;
+      }
+
+      let x = tableLeft;
+
+      // Désignation (tronquée si nécessaire)
+      const designation = sanitizeString(
+        ligne.produit?.produit || ligne.designation?.toString() || 'N/A',
+      );
+      doc.text(designation.substring(0, 45), x, y, {
+        width: columnWidths[0],
+        align: 'left',
+      });
+      x += columnWidths[0];
+
+      // Quantité
+      doc.text(ligne.quantite.toString(), x, y, {
+        width: columnWidths[1],
+        align: 'center',
+      });
+      x += columnWidths[1];
+
+      // Date d'expiration (format court)
+      const dateExp = ligne.produit?.validite_amm
+        ? new Date(ligne.produit.validite_amm).toLocaleDateString('fr-FR', {
+            day: '2-digit',
+            month: '2-digit',
+            year: '2-digit',
+          })
+        : 'N/A';
+      doc.text(dateExp, x, y, {
+        width: columnWidths[2],
+        align: 'center',
+      });
+
+      y += this.ROW_HEIGHT;
+    });
+
+    // Ligne de fermeture du tableau
+    doc
+      .moveTo(tableLeft, y)
+      .lineTo(tableLeft + columnWidths.reduce((a, b) => a + b, 0), y)
+      .stroke();
+
+    // Résumé avec position appropriée
+    const summaryTop = y + 20;
+    if (summaryTop > this.MAX_Y - 60) {
+      doc.addPage();
+      this.drawDeliveryNoteSummary(doc, 40, commande);
+    } else {
+      this.drawDeliveryNoteSummary(doc, summaryTop, commande);
+    }
+  }
+
+  private drawPreparationNote(doc: PDFDocument, commande: any): void {
+    // Utiliser la position dynamique après l'en-tête
+    const tableTop = this.drawHeader(doc, commande, 'bp');
+    const tableLeft = this.MARGINS;
+    const columnWidths = [220, 60, 100, 120]; // Ajusté pour 4 colonnes
+
+    // En-tête du tableau
+    this.drawTableHeader(doc, tableTop, tableLeft, columnWidths, [
+      'Désignation',
+      'Qté',
+      'Expiration',
+      'Emplacement',
+    ]);
+
+    // Lignes du tableau
+    let y = tableTop + 25;
+    doc.fontSize(8).font('Helvetica');
+
+    commande.lignes.forEach((ligne: any) => {
+      // Vérifier si on a besoin d'une nouvelle page
+      if (y + this.ROW_HEIGHT > this.MAX_Y - 80) {
+        doc.addPage();
+        const newTableTop = this.drawHeader(doc, commande, 'bp');
+        this.drawTableHeader(doc, newTableTop, tableLeft, columnWidths, [
+          'Désignation',
+          'Qté',
+          'Expiration',
+          'Emplacement',
+        ]);
+        y = newTableTop + 25;
+      }
+
+      let x = tableLeft;
+
+      // Désignation (tronquée)
+      const designation = sanitizeString(
+        ligne.produit?.produit || ligne.designation?.toString() || 'N/A',
+      );
+      doc.text(designation.substring(0, 35), x, y, {
+        width: columnWidths[0],
+        align: 'left',
+      });
+      x += columnWidths[0];
+
+      // Quantité
+      doc.text(ligne.quantite.toString(), x, y, {
+        width: columnWidths[1],
+        align: 'center',
+      });
+      x += columnWidths[1];
+
+      // Date d'expiration (format court)
+      const dateExp = ligne.produit?.validite_amm
+        ? new Date(ligne.produit.validite_amm).toLocaleDateString('fr-FR', {
+            day: '2-digit',
+            month: '2-digit',
+            year: '2-digit',
+          })
+        : 'N/A';
+      doc.text(dateExp, x, y, {
+        width: columnWidths[2],
+        align: 'center',
+      });
+      x += columnWidths[2];
+
+      // Emplacement (tronqué si nécessaire)
+      const emplacement = sanitizeString(ligne.produit?.emplacement || 'N/A');
+      doc.text(emplacement.substring(0, 20), x, y, {
+        width: columnWidths[3],
+        align: 'center',
+      });
+
+      y += this.ROW_HEIGHT;
+    });
+
+    // Ligne de fermeture du tableau
+    doc
+      .moveTo(tableLeft, y)
+      .lineTo(tableLeft + columnWidths.reduce((a, b) => a + b, 0), y)
+      .stroke();
+
+    // Résumé avec position appropriée
+    const summaryTop = y + 20;
+    if (summaryTop > this.MAX_Y - 60) {
+      doc.addPage();
+      this.drawPreparationNoteSummary(doc, 40, commande);
+    } else {
+      this.drawPreparationNoteSummary(doc, summaryTop, commande);
+    }
+  }
+
+  // Méthodes helper pour les résumés
+  private drawDeliveryNoteSummary(
+    doc: PDFDocument,
+    summaryTop: number,
+    commande: any,
+  ): void {
+    doc.fontSize(10).font('Helvetica-Bold');
+    doc.text('RÉSUMÉ DE LIVRAISON', this.MARGINS, summaryTop);
+
+    // Ligne de séparation
+    doc
+      .moveTo(this.MARGINS, summaryTop + 15)
+      .lineTo(this.PAGE_WIDTH - this.MARGINS, summaryTop + 15)
+      .stroke();
+
+    let currentY = summaryTop + 25;
+    doc.fontSize(9).font('Helvetica');
+
+    // Informations de livraison
+    doc.text(
+      `Nombre d'articles: ${commande.lignes.length}`,
+      this.MARGINS,
+      currentY,
+    );
+    currentY += 15;
+
+    const quantiteTotale = commande.lignes.reduce(
+      (sum: number, ligne: any) => sum + ligne.quantite,
+      0,
+    );
+    doc.text(`Quantité totale: ${quantiteTotale}`, this.MARGINS, currentY);
+    currentY += 15;
+
+    doc.text(
+      `Date de livraison: ${formatDate(new Date())}`,
+      this.MARGINS,
+      currentY,
+    );
+    currentY += 25;
+
+    // Signatures
+    doc.fontSize(9).font('Helvetica-Bold');
+    doc.text('Le Livreur', this.MARGINS, currentY);
+    doc.text('Le Client', this.MARGINS + 300, currentY);
+    currentY += 30;
+
+    // Lignes pour signatures
+    doc
+      .moveTo(this.MARGINS, currentY)
+      .lineTo(this.MARGINS + 150, currentY)
+      .stroke();
+    doc
+      .moveTo(this.MARGINS + 300, currentY)
+      .lineTo(this.MARGINS + 450, currentY)
+      .stroke();
+  }
+
+  private drawPreparationNoteSummary(
+    doc: PDFDocument,
+    summaryTop: number,
+    commande: any,
+  ): void {
+    doc.fontSize(10).font('Helvetica-Bold');
+    doc.text('RÉSUMÉ DE PRÉPARATION', this.MARGINS, summaryTop);
+
+    // Ligne de séparation
+    doc
+      .moveTo(this.MARGINS, summaryTop + 15)
+      .lineTo(this.PAGE_WIDTH - this.MARGINS, summaryTop + 15)
+      .stroke();
+
+    let currentY = summaryTop + 25;
+    doc.fontSize(9).font('Helvetica');
+
+    // Informations de préparation
+    doc.text(
+      `Nombre d'articles: ${commande.lignes.length}`,
+      this.MARGINS,
+      currentY,
+    );
+    currentY += 15;
+
+    const quantiteTotale = commande.lignes.reduce(
+      (sum: number, ligne: any) => sum + ligne.quantite,
+      0,
+    );
+    doc.text(`Quantité totale: ${quantiteTotale}`, this.MARGINS, currentY);
+    currentY += 15;
+
+    doc.text(
+      `Date de préparation: ${formatDate(new Date())}`,
+      this.MARGINS,
+      currentY,
+    );
+    currentY += 15;
+
+    doc.text('Status: À préparer', this.MARGINS, currentY);
+    currentY += 25;
+
+    // Cases à cocher
+    doc.fontSize(8).font('Helvetica');
+    doc.text('☐ Préparation terminée', this.MARGINS, currentY);
+    currentY += 15;
+    doc.text('☐ Contrôle qualité effectué', this.MARGINS, currentY);
+    currentY += 15;
+    doc.text('☐ Prêt pour livraison', this.MARGINS, currentY);
+    currentY += 25;
+
+    // Signature
+    doc.fontSize(9).font('Helvetica-Bold');
+    doc.text('Le Préparateur', this.MARGINS, currentY);
+    currentY += 20;
+
+    // Ligne pour signature
+    doc
+      .moveTo(this.MARGINS, currentY)
+      .lineTo(this.MARGINS + 200, currentY)
+      .stroke();
+  }
+  // private drawPreparationNote(doc: PDFDocument, commande: any): void {
+  //   const tableTop = 160;
+  //   const tableLeft = this.MARGINS;
+  //   const columnWidths = [250, 80, 120, 100];
+
+  //   // En-tête du tableau
+  //   this.drawTableHeader(doc, tableTop, tableLeft, columnWidths, [
+  //     'Désignation',
+  //     'Quantité',
+  //     'Date d’expiration',
+  //     'Emplacement',
+  //   ]);
+
+  //   // Lignes
+  //   let y = tableTop + 30;
+  //   commande.lignes.forEach((ligne: any) => {
+  //     if (y + this.ROW_HEIGHT > this.MAX_Y) {
+  //       doc.addPage();
+  //       y = 40;
+  //       this.drawTableHeader(doc, y, tableLeft, columnWidths, [
+  //         'Désignation',
+  //         'Quantité',
+  //         'Date d’expiration',
+  //         'Emplacement',
+  //       ]);
+  //       y += 30;
+  //     }
+
+  //     let x = tableLeft;
+  //     doc.text(
+  //       sanitizeString(
+  //         ligne.produit?.produit || ligne.designation?.toString() || 'N/A',
+  //       ),
+  //       x,
+  //       y,
+  //       { width: columnWidths[0], align: 'left' },
+  //     );
+  //     x += columnWidths[0];
+  //     doc.text(ligne.quantite.toString(), x, y, {
+  //       width: columnWidths[1],
+  //       align: 'center',
+  //     });
+  //     x += columnWidths[1];
+  //     doc.text(formatDate(ligne.produit?.validite_amm), x, y, {
+  //       width: columnWidths[2],
+  //       align: 'center',
+  //     });
+  //     x += columnWidths[2];
+  //     doc.text(sanitizeString(ligne.produit?.emplacement || 'N/A'), x, y, {
+  //       width: columnWidths[3],
+  //       align: 'center',
+  //     });
+  //     y += this.ROW_HEIGHT;
+  //   });
+
+  //   doc
+  //     .moveTo(tableLeft, y)
+  //     .lineTo(tableLeft + columnWidths.reduce((a, b) => a + b, 0), y)
+  //     .stroke();
+
+  //   // Résumé
+  //   const summaryTop = y + 20 > this.MAX_Y ? (doc.addPage(), 40) : y + 20;
+  //   doc.fontSize(10).font('Helvetica-Bold');
+  //   doc.text('Résumé', this.MARGINS, summaryTop);
+  //   doc.fontSize(8).font('Helvetica');
+  //   doc.text(
+  //     `Nombre d'articles: ${commande.lignes.length}`,
+  //     this.MARGINS,
+  //     summaryTop + 15,
+  //   );
+  //   doc.text('Le Gestionnaire', this.MARGINS, summaryTop + 30, {
+  //     underline: true,
+  //   });
+  //   doc
+  //     .moveTo(this.MARGINS, summaryTop + 50)
+  //     .lineTo(this.PAGE_WIDTH - this.MARGINS, summaryTop + 50)
+  //     .stroke();
+  // }
+
+  private drawTableHeader(
+    doc: PDFDocument,
+    tableTop: number,
+    tableLeft: number,
+    columnWidths: number[],
+    headers: string[],
+  ): void {
+    doc.fontSize(8).font('Helvetica-Bold');
+    let x = tableLeft;
+    headers.forEach((header, i) => {
+      doc.text(header, x, tableTop, {
+        width: columnWidths[i],
+        align: 'center',
+      });
+      x += columnWidths[i];
+    });
+    doc
+      .moveTo(tableLeft, tableTop + 20)
+      .lineTo(
+        tableLeft + columnWidths.reduce((a, b) => a + b, 0),
+        tableTop + 20,
+      )
+      .stroke();
+  }
+
+  private calculateFinancials(commande: any) {
+    const montantInitial = commande.lignes.reduce(
+      (sum: number, ligne: any) => sum + ligne.prix_vente * ligne.quantite,
+      0,
+    );
+    const remise = commande.remise || 0;
+    const montantApresRemise = montantInitial - remise;
+    const tva = commande.tva || 0;
+    const precompte = montantInitial * 0.02;
+    const timbreFiscal = 200;
+    const totalTTC = montantApresRemise + tva + precompte + timbreFiscal;
+
+    return {
+      montantInitial: Number(montantInitial.toFixed(2)),
+      remise: Number(remise.toFixed(2)),
+      montantApresRemise: Number(montantApresRemise.toFixed(2)),
+      tva: Number(tva.toFixed(2)),
+      precompte: Number(precompte.toFixed(2)),
+      timbreFiscal: Number(timbreFiscal.toFixed(2)),
+      totalTTC: Number(totalTTC.toFixed(2)),
+    };
+  }
+
+  private drawSummary(
+    doc: PDFDocument,
+    summaryTop: number,
+    financials: any,
+    commande: any,
+  ): void {
+    doc.fontSize(10).font('Helvetica-Bold');
+    doc.text('Résumé', this.MARGINS, summaryTop);
+    doc.fontSize(8).font('Helvetica');
+    doc.text(
+      `Montant HT: ${financials.montantInitial} CFA`,
+      this.MARGINS + 300,
+      summaryTop + 10,
+      { align: 'right' },
+    );
+    doc.text(
+      `Remise: ${financials.remise} CFA`,
+      this.MARGINS + 300,
+      summaryTop + 25,
+      { align: 'right' },
+    );
+    doc.text(
+      `Montant après remise: ${financials.montantApresRemise} CFA`,
+      this.MARGINS + 300,
+      summaryTop + 40,
+      { align: 'right' },
+    );
+    doc.text(
+      `TVA: ${financials.tva} CFA`,
+      this.MARGINS + 300,
+      summaryTop + 55,
+      { align: 'right' },
+    );
+    doc.text(
+      `Précompte BIC [A] 2%: ${financials.precompte} CFA`,
+      this.MARGINS + 300,
+      summaryTop + 70,
+      { align: 'right' },
+    );
+    doc.text(
+      `Timbre Fiscal: ${financials.timbreFiscal} CFA`,
+      this.MARGINS + 300,
+      summaryTop + 85,
+      { align: 'right' },
+    );
+    doc.text(
+      `Total TTC: ${financials.totalTTC} CFA`,
+      this.MARGINS + 300,
+      summaryTop + 100,
+      { align: 'right' },
+    );
+    doc.text(
+      `Moyen de paiement: ${sanitizeString(this.typeReglementMapping[commande.type_reglement] || commande.type_reglement)}`,
+      this.MARGINS + 300,
+      summaryTop + 115,
+      { align: 'right' },
+    );
+    doc.text(
+      `Nombre d'articles: ${commande.lignes.length}`,
+      this.MARGINS + 300,
+      summaryTop + 130,
+      { align: 'right' },
+    );
+    doc.text('* Montants en francs CFA', this.MARGINS + 300, summaryTop + 145, {
+      align: 'right',
+    });
+    doc.text(
+      `Arrêté la présente facture à ${numberToWordsFr(financials.totalTTC)} francs CFA`,
+      this.MARGINS,
+      summaryTop + 160,
+    );
+    doc.text('Le Gestionnaire', this.MARGINS, summaryTop + 175, {
+      underline: true,
+    });
+    doc
+      .moveTo(this.MARGINS, summaryTop + 190)
+      .lineTo(this.PAGE_WIDTH - this.MARGINS, summaryTop + 190)
+      .stroke();
+  }
+
+  private drawSimpleSummary(
+    doc: PDFDocument,
+    summaryTop: number,
+    financials: any,
+  ): void {
+    let y = summaryTop;
+    doc.fontSize(9).font('Helvetica');
+    doc.text(`Montant HT: ${financials.montantInitial} CFA`, 350, y, {
+      align: 'right',
+    });
+    if (financials.remise > 0) {
+      y += 15;
+      doc.text(`Remise: ${financials.remise} CFA`, 350, y, { align: 'right' });
+    }
+    y += 15;
+    doc.text(`TVA: ${financials.tva} CFA`, 350, y, { align: 'right' });
+    y += 15;
+    doc.text(`Précompte: ${financials.precompte} CFA`, 350, y, {
+      align: 'right',
+    });
+    y += 15;
+    doc.text(`Timbre: ${financials.timbreFiscal} CFA`, 350, y, {
+      align: 'right',
+    });
+    y += 20;
+    doc.fontSize(10).font('Helvetica-Bold');
+    doc.text(`TOTAL TTC: ${financials.totalTTC} CFA`, 350, y, {
+      align: 'right',
+    });
+  }
 
   async findAll(
     startDate?: string,
@@ -1255,7 +1711,8 @@ export class CommandeVenteService {
   }
 
   async create(dto: CreateCommandeVenteDto): Promise<CommandeVente> {
-    // console.log('Payload reçu:', JSON.stringify(dto, null, 2));
+    console.log('Payload reçu:', JSON.stringify(dto, null, 2));
+
     return this.commandeVenteRepository.manager.transaction(async (manager) => {
       try {
         // Valider le client
@@ -1268,49 +1725,32 @@ export class CommandeVenteService {
           );
         }
 
-        // Valider type_isb
-        const isbs = await manager.find(Isb, { select: ['isb'] });
-        // console.log('Données brutes de isb:', JSON.stringify(isbs, null, 2));
-        const validIsb = isbs.map((isb) => isb.isb.trim().toUpperCase());
-        // console.log('Valeurs valides de type_isb (pourcentages):', validIsb);
-        const isbMapping: { [key: string]: string } = {
-          A: '0%',
-          C: '2%',
-          D: '5%',
-        };
-        const mappedTypeIsb =
-          isbMapping[dto.type_isb.toUpperCase()] || dto.type_isb.toUpperCase();
-        // if (!validIsb.includes(mappedTypeIsb)) {
-        //   throw new BadRequestException(
-        //     `Type ISB invalide: ${dto.type_isb}. Valeurs valides: ${validIsb.join(', ')} (mappé à: ${mappedTypeIsb})`,
-        //   );
-        // }
-        const isbRecord = await manager.findOne(Isb, {
-          where: { isb: mappedTypeIsb },
-        });
-        const isbRate: any = isbRecord?.taux || 0;
-        console.log('Taux ISB pour', mappedTypeIsb, ':', isbRate);
-
-        // Valider type_reglement
-        const typeReglements = await manager.find(TypeReglement);
-        const validTypeReglements = typeReglements.map((tr) =>
-          tr.type_reglement.trim().toUpperCase(),
-        );
-        const receivedTypeReglement =
-          this.typeReglementMapping[dto.type_reglement] ||
-          dto.type_reglement.toUpperCase();
-        // if (!validTypeReglements.includes(receivedTypeReglement)) {
-        //   throw new BadRequestException(
-        //     `Type de règlement invalide: ${dto.type_reglement}. Valeurs valides: ${validTypeReglements.join(', ')}`,
-        //   );
-        // }
-
-        if (dto.remise == null || isNaN(dto.remise) || dto.remise < 0) {
-          throw new BadRequestException(
-            `Remise invalide: ${dto.remise}. Doit être un nombre positif en CFA`,
-          );
+        // Gérer l'ISB selon le type_isb
+        let isbRate = 0;
+        if (dto.type_isb) {
+          // Récupérer le taux ISB depuis la base
+          const isbs = await manager.find(Isb, { select: ['isb', 'taux'] });
+          const isbRecord = isbs.find((isb) => isb.isb === dto.type_isb);
+          if (isbRecord) {
+            isbRate = parseFloat(isbRecord.taux) || 0;
+          } else {
+            // Mapping par défaut si pas trouvé en DB
+            const isbMapping: { [key: string]: number } = {
+              '0%': 0,
+              '2%': 0.02,
+              '5%': 0.05,
+            };
+            isbRate = isbMapping[dto.type_isb] || 0.02; // 2% par défaut
+          }
         }
+        console.log('Taux ISB appliqué:', isbRate, 'pour type:', dto.type_isb);
 
+        // TVA : utiliser celle fournie ou 0
+        const tvaCommande =
+          dto.tva != null && !isNaN(dto.tva) && dto.tva >= 0 ? dto.tva : 0;
+        console.log('TVA générale appliquée:', tvaCommande, '%');
+
+        // Génération numéro facture
         const currentYear = new Date().getFullYear();
         const lastCommande = await manager.findOne(CommandeVente, {
           where: {
@@ -1322,6 +1762,7 @@ export class CommandeVenteService {
         const numero_seq = lastCommande ? lastCommande.numero_seq + 1 : 1;
         const numero_facture_certifiee = `${numero_seq.toString().padStart(4, '0')}-${currentYear}`;
 
+        // Vérifier unicité
         const existingCommande = await manager.findOne(CommandeVente, {
           where: { numero_facture_certifiee },
         });
@@ -1331,22 +1772,23 @@ export class CommandeVenteService {
           );
         }
 
+        // Créer la commande (temporairement avec valeurs par défaut)
         const commande = manager.create(CommandeVente, {
           date_commande_vente: new Date(dto.date_commande_vente),
-          montant_total: 0,
+          montant_total: 0, // Sera calculé
           montant_paye: 0,
-          montant_restant: 0,
-          remise: dto.remise,
+          montant_restant: 0, // Sera calculé
+          remise: 0, // Sera calculé
           validee: 1,
           statut: 0,
           id_client: dto.id_client,
           client,
           reglee: 0,
           moyen_reglement: 0,
-          type_reglement: 'E',
-          tva: 0,
-          type_isb: dto.type_isb,
-          isb: 0,
+          type_reglement: dto.type_reglement || 'E',
+          tva: 0, // Sera le montant TVA calculé
+          type_isb: dto.type_isb || '2%',
+          isb: 0, // Sera calculé
           avoir: 0,
           login: dto.login,
           type_facture: 'FV',
@@ -1384,14 +1826,14 @@ export class CommandeVenteService {
 
         const savedCommande = await manager.save(CommandeVente, commande);
         console.log(
-          `Commande sauvegardée avec id_commande_vente: ${savedCommande.id_commande_vente}`,
+          `Commande sauvegardée avec id: ${savedCommande.id_commande_vente}`,
         );
 
-        // Créer les lignes
-        let subtotal = 0;
-        let montant_tva = 0;
-        let isb_total = 0;
+        // Traitement des lignes - CALCULER D'ABORD LE MONTANT HT TOTAL
+        let montant_ht_total = 0; // Total HT (prix * quantité)
+        let montant_tva_total = 0; // Montant TVA calculé
         const savedLignes: LignesCommandeVente[] = [];
+
         for (const ligne of dto.lignes) {
           const produit = await manager.findOneBy(Produit, {
             id_produit: ligne.id_produit,
@@ -1406,33 +1848,33 @@ export class CommandeVenteService {
               `Quantité invalide pour produit ${ligne.id_produit}: ${ligne.quantite}. Stock disponible: ${produit.stock_courant}`,
             );
           }
+
           const prix_vente = ligne.prix_vente ?? produit.prix_unitaire;
-          const remise = ligne.remise ?? 0;
-          const montant_ligne = prix_vente * ligne.quantite * (1 - remise);
-          const taux_tva = ligne.taux_tva ?? produit.taux_tva ?? 0;
-          const montant_tva_ligne = montant_ligne * (taux_tva / 100);
-          const isb_ligne = ligne.isb_ligne ?? montant_ligne * isbRate;
-          subtotal += montant_ligne;
-          montant_tva += montant_tva_ligne;
-          isb_total += isb_ligne;
+          const montant_ligne_ht = prix_vente * ligne.quantite; // Montant HT de la ligne
+
+          // Accumulation du montant HT total
+          montant_ht_total += montant_ligne_ht;
+
+          console.log(`Ligne ${ligne.id_produit}:`, {
+            prix_unitaire: prix_vente,
+            quantite: ligne.quantite,
+            montant_ht: montant_ligne_ht,
+          });
 
           const ligneDto: CreateLignesCommandeVenteDto = {
             id_produit: ligne.id_produit,
             prix_vente,
-            remise,
-            description_remise: ligne.description_remise || 'Aucune',
-            prix_vente_avant_remise:
-              ligne.prix_vente_avant_remise ?? prix_vente.toString(),
+            remise: 0, // Pas de remise au niveau ligne
+            description_remise: 'Aucune',
+            prix_vente_avant_remise: prix_vente.toString(),
             quantite: ligne.quantite,
-            group_tva: ligne.group_tva ?? produit.group_tva ?? '',
-            etiquette_tva: ligne.etiquette_tva ?? produit.etiquette_tva ?? '',
-            taux_tva,
-            isb_ligne,
+            group_tva: produit.group_tva ?? '',
+            etiquette_tva: produit.etiquette_tva ?? '',
+            taux_tva: tvaCommande,
+            isb_ligne: 0, // ISB géré au niveau commande
             date: ligne.date ?? dto.date_commande_vente,
           };
-          console.log(
-            `Création de ligne pour commande ${savedCommande.id_commande_vente}`,
-          );
+
           const savedLigne = await this.lignesCommandeVenteService.create(
             ligneDto,
             savedCommande.id_commande_vente,
@@ -1441,26 +1883,82 @@ export class CommandeVenteService {
           savedLignes.push(savedLigne);
         }
 
-        // Mettre à jour les montants
-        const montant_total = subtotal + montant_tva + isb_total - dto.remise;
+        // MAINTENANT CALCULER LA REMISE (après avoir le montant HT total)
+        let montant_remise = 0;
+        const remiseFrontend =
+          dto.remise != null && !isNaN(dto.remise) && dto.remise >= 0
+            ? dto.remise
+            : 0;
+
+        if (remiseFrontend > 0) {
+          if (remiseFrontend < 1) {
+            // C'est un taux (ex: 0.02 = 2%)
+            montant_remise = montant_ht_total * remiseFrontend;
+            console.log(
+              `Remise calculée: ${montant_ht_total} × ${remiseFrontend} = ${montant_remise} CFA`,
+            );
+          } else {
+            // C'est un montant fixe
+            montant_remise = remiseFrontend;
+            console.log(`Remise fixe: ${montant_remise} CFA`);
+          }
+        }
+
+        console.log('Remise appliquée:', montant_remise, 'CFA');
+
+        // Calcul ISB/Précompte sur le montant HT APRÈS remise
+        const montant_ht_apres_remise = montant_ht_total - montant_remise;
+        const montant_isb = montant_ht_apres_remise * isbRate;
+
+        // Calculer TVA sur le montant après remise
+        if (tvaCommande > 0) {
+          montant_tva_total = montant_ht_apres_remise * (tvaCommande / 100);
+        }
+
+        // Calculs finaux
+        const timbre_fiscal = 200; // Fixe
+
+        // Calcul du total : (HT - Remise) + TVA + ISB + Timbre
+        const montant_total_final =
+          montant_ht_apres_remise +
+          montant_tva_total +
+          montant_isb +
+          timbre_fiscal;
+
+        console.log('Calculs finaux:', {
+          montant_ht_initial: montant_ht_total,
+          remise: montant_remise,
+          montant_ht_apres_remise: montant_ht_apres_remise,
+          montant_tva: montant_tva_total,
+          montant_isb: montant_isb,
+          timbre_fiscal: timbre_fiscal,
+          total_final: montant_total_final,
+        });
+
+        // Mise à jour de la commande
         await manager.update(
           CommandeVente,
           { id_commande_vente: savedCommande.id_commande_vente },
           {
-            montant_total,
-            montant_restant: montant_total,
-            tva: montant_tva,
-            isb: isb_total,
+            montant_total: montant_total_final,
+            montant_restant: montant_total_final,
+            tva: montant_tva_total, // Montant TVA calculé
+            isb: montant_isb, // Montant ISB calculé
+            remise: montant_remise, // Montant remise calculé
           },
         );
 
+        // Mise à jour objet retourné
+        savedCommande.montant_total = montant_total_final;
+        savedCommande.montant_restant = montant_total_final;
+        savedCommande.tva = montant_tva_total;
+        savedCommande.isb = montant_isb;
+        savedCommande.remise = montant_remise;
         savedCommande.lignes = savedLignes;
+
         return savedCommande;
       } catch (error) {
-        console.error(
-          'Erreur dans la transaction:',
-          JSON.stringify(error, null, 2),
-        );
+        console.error('Erreur dans la transaction:', error);
         throw error;
       }
     });
@@ -1948,6 +2446,52 @@ export class CommandeVenteService {
     }
   }
 
+  // async exportInvoicesToExcel(startDate: string, endDate: string) {
+  //   console.log('exportInvoicesToExcel called with:', { startDate, endDate });
+  //   const invoices = await this.getInvoicesByClient(startDate, endDate);
+  //   console.log('Invoices data:', invoices.data);
+  //   if (!invoices.data || invoices.data.length === 0) {
+  //     throw new Error('No data to export');
+  //   }
+  //   const workbook = new ExcelJS.Workbook();
+  //   invoices.data.forEach((clientData) => {
+  //     const worksheet = workbook.addWorksheet(
+  //       clientData.client || 'Client Inconnu',
+  //     );
+  //     clientData.commandes.forEach((commande, index) => {
+  //       worksheet.addRow([`Facture N°: ${commande.numero_commande}`]);
+  //       worksheet.addRow([]);
+  //       worksheet.addRow(['Désignation', 'Quantité', 'Pu', 'Montant ligne']);
+  //       commande.lignes.forEach((ligne) => {
+  //         worksheet.addRow([
+  //           ligne.designation,
+  //           ligne.quantite,
+  //           ligne.prix_unitaire,
+  //           ligne.montant_ligne,
+  //         ]);
+  //       });
+  //       worksheet.addRow([]);
+  //       worksheet.addRow(['Total', '', '', commande.total]);
+  //       worksheet.addRow(['Montant réglé', '', '', commande.montant_regle]);
+  //       worksheet.addRow(['Montant restant', '', '', commande.montant_restant]);
+  //       if (index < clientData.commandes.length - 1) {
+  //         worksheet.addRow([]);
+  //       }
+  //     });
+  //     worksheet.getRow(1).font = { bold: true, size: 14 };
+  //     worksheet.getRow(3).font = { bold: true };
+  //     worksheet.columns = [
+  //       { width: 30 },
+  //       { width: 10 },
+  //       { width: 10 },
+  //       { width: 15 },
+  //     ];
+  //   });
+  //   const buffer = await workbook.xlsx.writeBuffer();
+  //   //  console.log('Excel buffer size:', buffer.length);
+  //   return 'buffer';
+  // }
+
   async exportInvoicesToExcel(startDate: string, endDate: string) {
     console.log('exportInvoicesToExcel called with:', { startDate, endDate });
     const invoices = await this.getInvoicesByClient(startDate, endDate);
@@ -1972,14 +2516,20 @@ export class CommandeVenteService {
             ligne.montant_ligne,
           ]);
         });
+        // Add fiscal stamp row
+        const fiscalStamp = 200;
+        worksheet.addRow(['Timbre fiscal', '', '', fiscalStamp]);
         worksheet.addRow([]);
-        worksheet.addRow(['Total', '', '', commande.total]);
+        // Update total to include fiscal stamp
+        const updatedTotal = commande.total + fiscalStamp;
+        worksheet.addRow(['Total', '', '', updatedTotal]);
         worksheet.addRow(['Montant réglé', '', '', commande.montant_regle]);
         worksheet.addRow(['Montant restant', '', '', commande.montant_restant]);
         if (index < clientData.commandes.length - 1) {
           worksheet.addRow([]);
         }
       });
+      // Apply formatting
       worksheet.getRow(1).font = { bold: true, size: 14 };
       worksheet.getRow(3).font = { bold: true };
       worksheet.columns = [
@@ -1990,7 +2540,7 @@ export class CommandeVenteService {
       ];
     });
     const buffer = await workbook.xlsx.writeBuffer();
-    //  console.log('Excel buffer size:', buffer.length);
+    // console.log('Excel buffer size:', buffer.length);
     return 'buffer';
   }
 

@@ -9,6 +9,7 @@ import {
 import { TitulaireAmm } from '../titulaire_amm/titulaire_amm.entity';
 import { Destination } from '../destination/destination.entity';
 import { LignesCommandeAchat } from '../lignes_commande_achat/lignes_commande_achat.entity';
+import { Fournisseur } from 'src/fournisseur/fournisseur.entity';
 
 @Entity('commande_achat')
 export class CommandeAchat {
@@ -33,18 +34,22 @@ export class CommandeAchat {
   @Column({ type: 'int', default: 0 })
   statut: number;
 
-  @ManyToOne(() => TitulaireAmm, { nullable: false })
+  @ManyToOne(() => Fournisseur, { nullable: false })
   @JoinColumn({ name: 'id_fournisseur' })
-  titulaire_amm: TitulaireAmm;
+  fournisseur: Fournisseur;
+
+  // @ManyToOne(() => TitulaireAmm, { nullable: false })
+  // @JoinColumn({ name: 'id_fournisseur' })
+  // titulaire_amm: TitulaireAmm;
 
   @Column({ type: 'int', default: 0 })
   reglee: number;
 
   @Column({ type: 'int', nullable: true })
-  moyen_reglement: number;
+  moyen_reglement?: number;
 
   @Column({ type: 'int', nullable: true })
-  type_reglement: number;
+  type_reglement?: number;
 
   @Column({ type: 'double', nullable: true })
   tva: number | null;

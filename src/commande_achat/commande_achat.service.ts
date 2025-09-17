@@ -20,6 +20,7 @@ import { UpdateCommandeAchatDto } from './dto/update-commande_achat.dto';
 import { User } from '../user/user.entity';
 import { LignesCommandeAchatService } from '../lignes_commande_achat/lignes_commande_achat.service';
 import { Log } from 'src/log/log.entity';
+import { Fournisseur } from 'src/fournisseur/fournisseur.entity';
 
 // interface StockConsistency {
 //   id_produit: number;
@@ -59,45 +60,200 @@ export class CommandeAchatService {
   ): Promise<CommandeAchat[]> {
     console.log('Filtres reçus:', { date_debut, date_fin, reference });
     const where: any = {};
+
     if (date_debut && date_fin) {
       const startDate = new Date(date_debut);
       const endDate = new Date(date_fin);
       if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
         throw new BadRequestException('Dates invalides');
       }
+      endDate.setHours(23, 59, 59, 999); // Inclure toute la journée
       where.date_commande_achat = Between(startDate, endDate);
     }
+
     if (reference) {
       where.reference = Like(`%${reference}%`);
     }
+
     try {
       const commandes = await this.commande_achatRepository.find({
         where,
-        relations: ['titulaire_amm', 'destination', 'lignes'],
+        relations: ['fournisseur', 'destination', 'lignes', 'lignes.produit'], // Ajout de lignes.produit
       });
       console.log('Commandes trouvées:', JSON.stringify(commandes, null, 2));
       return commandes;
     } catch (error) {
-      console.error(
-        'Erreur lors de la récupération des commandes:',
-        JSON.stringify(error, null, 2),
-      );
+      console.error('Erreur lors de la récupération des commandes:', error);
       throw new BadRequestException(
-        "Erreur lors de la récupération des commandes d'achat",
+        `Erreur lors de la récupération des commandes d'achat : ${error.message}`,
       );
     }
   }
 
   async findOne(id: number): Promise<CommandeAchat> {
-    const entity = await this.commande_achatRepository.findOne({
-      where: { id_commande_achat: id },
-      relations: ['lignes', 'lignes.produit', 'titulaire_amm', 'destination'],
-    });
-    if (!entity) {
-      throw new NotFoundException(`CommandeAchat avec l'ID ${id} non trouvée`);
+    try {
+      const commande = await this.commande_achatRepository.findOne({
+        where: { id_commande_achat: id },
+        relations: ['fournisseur', 'destination', 'lignes', 'lignes.produit'], // Changé ici aussi
+      });
+      if (!commande) {
+        throw new NotFoundException(`Commande avec l'ID ${id} non trouvée`);
+      }
+      return commande;
+    } catch (error) {
+      console.error('Erreur lors de la récupération de la commande:', error);
+      throw new BadRequestException(
+        `Erreur lors de la récupération de la commande ${id} : ${error.message}`,
+      );
     }
-    return entity;
   }
+
+  // async create(
+  //   dto: CreateCommandeAchatDto,
+  //   user: User,
+  // ): Promise<CommandeAchat> {
+  //   if (!user) {
+  //     throw new UnauthorizedException('Utilisateur non authentifié');
+  //   }
+
+  //   return await this.commande_achatRepository.manager.transaction(
+  //     async (transactionalEntityManager: EntityManager) => {
+  //       // Vérification du fournisseur
+  //       const fournisseur = await transactionalEntityManager.findOne(
+  //         Fournisseur,
+  //         {
+  //           where: { id_fournisseur: dto.id_fournisseur },
+  //         },
+  //       );
+  //       if (!fournisseur) {
+  //         throw new NotFoundException(
+  //           `Fournisseur avec l'ID ${dto.id_fournisseur} non trouvé`,
+  //         );
+  //       }
+
+  //       // DEBUG: Log fournisseur to check if it has an ID
+  //       console.log('Fournisseur found:', fournisseur);
+  //       console.log('Fournisseur ID:', fournisseur.id_fournisseur);
+
+  //       // Vérification de la destination
+  //       const destination = await transactionalEntityManager.findOne(
+  //         Destination,
+  //         {
+  //           where: { id_destination: dto.id_destination },
+  //         },
+  //       );
+  //       if (!destination) {
+  //         throw new NotFoundException(
+  //           `Destination avec l'ID ${dto.id_destination} non trouvée`,
+  //         );
+  //       }
+
+  //       // DEBUG: Log destination to check if it has an ID
+  //       console.log('Destination found:', destination);
+  //       console.log('Destination ID:', destination.id_destination);
+
+  //       // Calcul du montant total
+  //       const montantTotal = dto.produits.reduce(
+  //         (sum, produit) =>
+  //           sum +
+  //           (produit.pu
+  //             ? produit.pu *
+  //               produit.quantite *
+  //               (1 - (produit.remise || 0) / 100)
+  //             : 0),
+  //         0,
+  //       );
+
+  //       // SOLUTION 1: Use raw insert with foreign key IDs instead of entity objects
+  //       try {
+  //         const commandeData = {
+  //           date_commande_achat: new Date(dto.date_commande_achat),
+  //           montant_total: montantTotal,
+  //           montant_paye: dto.montant_paye || 0,
+  //           montant_restant: montantTotal - (dto.montant_paye || 0),
+  //           validee: dto.validee !== undefined ? dto.validee : 1,
+  //           statut: dto.statut !== undefined ? dto.statut : 0,
+  //           reglee: dto.reglee !== undefined ? dto.reglee : 0,
+  //           moyen_reglement: dto.moyen_reglement || 0,
+  //           type_reglement: dto.type_reglement || 0,
+  //           tva: dto.tva || 0,
+  //           avoir: dto.avoir !== undefined ? dto.avoir : 0,
+  //           reference: dto.reference,
+  //           user: user.nom,
+  //           // Use foreign key IDs instead of entity objects
+  //           id_fournisseur: fournisseur.id_fournisseur,
+  //           id_destination: destination.id_destination,
+  //         };
+
+  //         console.log('Commande data to insert:', commandeData);
+
+  //         // Use QueryBuilder for raw insert
+  //         const result = await transactionalEntityManager
+  //           .createQueryBuilder()
+  //           .insert()
+  //           .into(CommandeAchat)
+  //           .values(commandeData)
+  //           .execute();
+
+  //         console.log('Insert result:', result);
+
+  //         // Fetch the created entity with relations
+  //         const savedCommande = await transactionalEntityManager.findOne(
+  //           CommandeAchat,
+  //           {
+  //             where: {
+  //               id_commande_achat: result.identifiers[0].id_commande_achat,
+  //             },
+  //             relations: ['fournisseur', 'destination'],
+  //           },
+  //         );
+
+  //         if (!savedCommande) {
+  //           throw new Error('Failed to create and retrieve commande');
+  //         }
+
+  //         // Rest of your logic for creating lines and updating products
+  //         for (const produit of dto.produits) {
+  //           await this.lignesCommandeAchatService.create(
+  //             {
+  //               ...produit,
+  //               id_commande_achat: savedCommande.id_commande_achat,
+  //               date: new Date(dto.date_commande_achat),
+  //             },
+  //             user.nom,
+  //             savedCommande.reference,
+  //             dto.id_destination,
+  //             transactionalEntityManager,
+  //           );
+
+  //           const produitToUpdate = await transactionalEntityManager.findOne(
+  //             Produit,
+  //             {
+  //               where: { id_produit: produit.designation },
+  //             },
+  //           );
+
+  //           if (produitToUpdate) {
+  //             produitToUpdate.validite_amm = produit.date_expiration;
+  //             produitToUpdate.pght = produit.pght;
+  //             produitToUpdate.prix_unitaire = produit.prix_vente;
+
+  //             await transactionalEntityManager.save(Produit, produitToUpdate);
+  //           } else {
+  //             throw new NotFoundException(
+  //               `Produit avec l'ID ${produit.designation} non trouvé`,
+  //             );
+  //           }
+  //         }
+
+  //         return savedCommande;
+  //       } catch (error) {
+  //         console.error('Error during commande creation:', error);
+  //         throw error;
+  //       }
+  //     },
+  //   );
+  // }
 
   async create(
     dto: CreateCommandeAchatDto,
@@ -108,12 +264,12 @@ export class CommandeAchatService {
     }
 
     return await this.commande_achatRepository.manager.transaction(
-      async (transactionalEntityManager) => {
+      async (transactionalEntityManager: EntityManager) => {
         // Vérification du fournisseur
         const fournisseur = await transactionalEntityManager.findOne(
-          TitulaireAmm,
+          Fournisseur,
           {
-            where: { id_titulaire_amm: dto.id_fournisseur },
+            where: { id_fournisseur: dto.id_fournisseur },
           },
         );
         if (!fournisseur) {
@@ -155,7 +311,7 @@ export class CommandeAchatService {
           montant_restant: montantTotal - (dto.montant_paye || 0),
           validee: dto.validee || 1,
           statut: dto.statut || 0,
-          id_fournisseur: dto.id_fournisseur,
+          fournisseur, // Assigner l'entité Fournisseur
           reglee: dto.reglee || 0,
           moyen_reglement: dto.moyen_reglement || 0,
           type_reglement: dto.type_reglement || 0,
@@ -163,8 +319,6 @@ export class CommandeAchatService {
           avoir: dto.avoir || 0,
           reference: dto.reference,
           user: user.nom,
-          id_destination: dto.id_destination,
-          titulaire_amm: fournisseur,
           destination,
         });
 
@@ -193,15 +347,17 @@ export class CommandeAchatService {
           const produitToUpdate = await transactionalEntityManager.findOne(
             Produit,
             {
-              where: { id_produit: produit.designation }, // Supposons que designation = id_produit
+              where: { id_produit: produit.designation },
             },
           );
 
           if (produitToUpdate) {
-            produitToUpdate.cle_titulaire_amm = dto.id_fournisseur;
+            //  produitToUpdate.cle_titulaire_amm = dto.id_fournisseur;
+            // produitToUpdate.cle_fournisseur = dto.id_fournisseur;
+            // // Changé de cle_titulaire_amm à cle_fournisseur
             produitToUpdate.validite_amm = produit.date_expiration;
             produitToUpdate.pght = produit.pght;
-            produitToUpdate.prix_vente = produit.prix_vente;
+            produitToUpdate.prix_unitaire = produit.prix_vente;
             await transactionalEntityManager.save(Produit, produitToUpdate);
           } else {
             throw new NotFoundException(
@@ -214,88 +370,6 @@ export class CommandeAchatService {
       },
     );
   }
-
-  // async create(
-  //   dto: CreateCommandeAchatDto,
-  //   user: User,
-  // ): Promise<CommandeAchat> {
-  //   if (!user) {
-  //     throw new UnauthorizedException('Utilisateur non authentifié');
-  //   }
-  //   return await this.commande_achatRepository.manager.transaction(
-  //     async (transactionalEntityManager) => {
-  //       const fournisseur = await transactionalEntityManager.findOne(
-  //         TitulaireAmm,
-  //         {
-  //           where: { id_titulaire_amm: dto.id_fournisseur },
-  //         },
-  //       );
-  //       if (!fournisseur) {
-  //         throw new NotFoundException(
-  //           `Fournisseur avec l'ID ${dto.id_fournisseur} non trouvé`,
-  //         );
-  //       }
-  //       const destination = await transactionalEntityManager.findOne(
-  //         Destination,
-  //         {
-  //           where: { id_destination: dto.id_destination },
-  //         },
-  //       );
-  //       if (!destination) {
-  //         throw new NotFoundException(
-  //           `Destination avec l'ID ${dto.id_destination} non trouvée`,
-  //         );
-  //       }
-  //       const montantTotal = dto.produits.reduce(
-  //         (sum, produit) =>
-  //           sum +
-  //           (produit.pu
-  //             ? produit.pu *
-  //               produit.quantite *
-  //               (1 - (produit.remise || 0) / 100)
-  //             : 0),
-  //         0,
-  //       );
-  //       const commande = transactionalEntityManager.create(CommandeAchat, {
-  //         date_commande_achat: new Date(dto.date_commande_achat),
-  //         montant_total: montantTotal,
-  //         montant_paye: dto.montant_paye || 0,
-  //         montant_restant: montantTotal - (dto.montant_paye || 0),
-  //         validee: dto.validee || 1,
-  //         statut: dto.statut || 0,
-  //         id_fournisseur: dto.id_fournisseur,
-  //         reglee: dto.reglee || 0,
-  //         moyen_reglement: dto.moyen_reglement || 0,
-  //         type_reglement: dto.type_reglement || 0,
-  //         tva: dto.tva || 0,
-  //         avoir: dto.avoir || 0,
-  //         reference: dto.reference,
-  //         user: user.nom,
-  //         id_destination: dto.id_destination,
-  //         titulaire_amm: fournisseur,
-  //         destination,
-  //       });
-  //       const savedCommande = await transactionalEntityManager.save(
-  //         CommandeAchat,
-  //         commande,
-  //       );
-  //       for (const produit of dto.produits) {
-  //         await this.lignesCommandeAchatService.create(
-  //           {
-  //             ...produit,
-  //             id_commande_achat: savedCommande.id_commande_achat,
-  //             date: new Date(dto.date_commande_achat),
-  //           },
-  //           user.nom,
-  //           savedCommande.reference,
-  //           dto.id_destination,
-  //           transactionalEntityManager,
-  //         );
-  //       }
-  //       return savedCommande;
-  //     },
-  //   );
-  // }
 
   async update(
     id: number,
