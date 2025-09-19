@@ -61,6 +61,7 @@ import { MenuModule } from './menu/menu.module';
 import { DataSource } from 'typeorm';
 import { DepenseModule } from './depense/depense.module';
 import { parseJawsDbUrl } from './utils/db_url-parser';
+import { AuditModule } from './audit/audit.module';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -144,6 +145,7 @@ import { parseJawsDbUrl } from './utils/db_url-parser';
     PostesModule,
     MenuModule,
     DepenseModule,
+    AuditModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -10,6 +10,8 @@ import { Produit } from './produit.entity';
 import { CreateProduitDto } from './dto/create-produit.dto';
 import { UpdateProduitDto } from './dto/update-produit.dto';
 import { MMvtStock } from '../m_mvt_stock/m_mvt_stock.entity';
+import { Audit } from 'src/audit/entities/audit.entity';
+import { CorrectStockDto } from './dto/correct-produit.dto';
 
 @Injectable()
 export class ProduitService {
@@ -18,7 +20,63 @@ export class ProduitService {
     private produitRepository: Repository<Produit>,
     @InjectRepository(MMvtStock)
     private mvtStockRepository: Repository<MMvtStock>,
+
+    @InjectRepository(Audit)
+    private auditRepository: Repository<Audit>,
   ) {}
+
+  async correctStockWithAudit(
+    id: number,
+    dto: CorrectStockDto,
+  ): Promise<Produit> {
+    const produit = await this.produitRepository.findOne({
+      where: { id_produit: id },
+    });
+
+    if (!produit) {
+      throw new HttpException(
+        `Produit avec ID ${id} non trouvé`,
+        HttpStatus.NOT_FOUND,
+      );
+    }
+
+    const old_stock = produit.stock_courant;
+    const new_stock = dto.new_stock;
+    const difference = new_stock - old_stock;
+
+    // Déterminer le type de correction
+    let type_correction: string;
+    if (difference > 0) {
+      type_correction = 'ajout';
+    } else if (difference < 0) {
+      type_correction = 'diminution';
+    } else {
+      type_correction = 'verification';
+    }
+
+    // Mise à jour du stock courant
+    produit.stock_courant = new_stock;
+    produit.stock_courant_date = Date.now();
+
+    await this.produitRepository.save(produit);
+
+    // Enregistrer l'action dans la table Audit
+    const audit = this.auditRepository.create({
+      produit: produit,
+      stock_courant_avant: old_stock,
+      stock_physique: new_stock,
+      difference: difference,
+      type_correction: type_correction,
+      description: dto.description,
+      user_id: dto.user_id,
+      user_nom: dto.user_nom,
+      date_audit: new Date(),
+    });
+
+    await this.auditRepository.save(audit);
+
+    return produit;
+  }
 
   async findAll(searchTerm?: string): Promise<Produit[]> {
     const query = this.produitRepository

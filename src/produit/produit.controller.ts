@@ -17,9 +17,15 @@ import { UpdateProduitDto } from './dto/update-produit.dto';
 import { Produit } from './produit.entity';
 import { Response } from 'express';
 import * as ExcelJS from 'exceljs';
+import { CorrectStockDto } from './dto/correct-produit.dto';
 @Controller('produit')
 export class ProduitController {
   constructor(private readonly produitService: ProduitService) {}
+
+  @Post(':id/correct-stock')
+  async correctStock(@Param('id') id: number, @Body() dto: CorrectStockDto) {
+    return this.produitService.correctStockWithAudit(id, dto);
+  }
 
   @Get('stock-value')
   async getStockValue(

@@ -29,6 +29,7 @@ import { CaptureStockService } from 'src/capture_stock/capture_stock.service';
 import { Log } from 'src/log/log.entity';
 import { GetUnpaidInvoicesDto } from './dto/invoice-unpaid.dto';
 import * as fs from 'fs';
+
 interface InvoiceLine {
   designation: string;
   quantite: number;
@@ -2857,18 +2858,68 @@ export class CommandeVenteService {
   }
 
   // Dans CommandeVenteService
+  // async getUnpaidInvoices(dto: GetUnpaidInvoicesDto) {
+  //   const { id_client, date_debut, date_fin } = dto;
+
+  //   if (!id_client) {
+  //     throw new BadRequestException("L'ID du client est requis");
+  //   }
+
+  //   // Construire la requête
+  //   const query = this.commandeVenteRepository
+  //     .createQueryBuilder('commande')
+  //     .where('commande.id_client = :id_client', { id_client })
+  //     .andWhere('commande.reglee = :reglee', { reglee: 0 }); // Factures non réglées
+
+  //   // Ajouter le filtre par dates si fourni
+  //   if (date_debut && date_fin) {
+  //     query.andWhere(
+  //       'commande.date_commande_vente BETWEEN :date_debut AND :date_fin',
+  //       {
+  //         date_debut,
+  //         date_fin,
+  //       },
+  //     );
+  //   } else if (date_debut) {
+  //     query.andWhere('commande.date_commande_vente >= :date_debut', {
+  //       date_debut,
+  //     });
+  //   } else if (date_fin) {
+  //     query.andWhere('commande.date_commande_vente <= :date_fin', { date_fin });
+  //   }
+
+  //   // Récupérer les factures avec les relations nécessaires
+  //   const invoices = await query
+  //     .leftJoinAndSelect('commande.client', 'client')
+  //     .select([
+  //       'commande.id_commande_vente',
+  //       'commande.numero_facture_certifiee',
+  //       'commande.date_commande_vente',
+  //       'commande.montant_total',
+  //       'commande.montant_paye',
+  //       'commande.montant_restant',
+  //       'commande.reglee',
+  //       'client.nom',
+  //       'client.prenom',
+  //     ])
+  //     .orderBy('commande.date_commande_vente', 'DESC')
+  //     .getMany();
+
+  //   return invoices;
+  // }
+
   async getUnpaidInvoices(dto: GetUnpaidInvoicesDto) {
     const { id_client, date_debut, date_fin } = dto;
-
-    if (!id_client) {
-      throw new BadRequestException("L'ID du client est requis");
-    }
 
     // Construire la requête
     const query = this.commandeVenteRepository
       .createQueryBuilder('commande')
-      .where('commande.id_client = :id_client', { id_client })
-      .andWhere('commande.reglee = :reglee', { reglee: 0 }); // Factures non réglées
+      .where('commande.reglee = :reglee', { reglee: 0 }); // Factures non réglées
+
+    // Ajouter le filtre par id_client si fourni
+    if (id_client) {
+      query.andWhere('commande.id_client = :id_client', { id_client });
+    }
 
     // Ajouter le filtre par dates si fourni
     if (date_debut && date_fin) {
@@ -2897,7 +2948,6 @@ export class CommandeVenteService {
         'commande.montant_total',
         'commande.montant_paye',
         'commande.montant_restant',
-        'commande.reglee',
         'client.nom',
         'client.prenom',
       ])
@@ -3199,5 +3249,253 @@ export class CommandeVenteService {
       month: r.month,
       value: parseFloat(r.value),
     }));
+  }
+
+  async generateUnpaidInvoicesPdf(
+    dto: GetUnpaidInvoicesDto,
+    res: Response,
+  ): Promise<void> {
+    try {
+      // Récupérer les factures impayées
+      const invoices = await this.getUnpaidInvoices(dto);
+
+      if (!invoices || invoices.length === 0) {
+        throw new NotFoundException('Aucune facture impayée trouvée');
+      }
+
+      // Créer le document PDF
+      const doc = new PDFDocument({ size: 'A4', margin: this.MARGINS });
+      res.setHeader('Content-Type', 'application/pdf');
+
+      const filename = `releve_factures_impayees_${new Date().toISOString().split('T')[0]}.pdf`;
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="${filename}"`,
+      );
+
+      // Sauvegarde locale pour débogage
+      doc.pipe(fs.createWriteStream(`test_releve_impaye.pdf`));
+      doc.pipe(res);
+
+      // En-tête du document
+      this.drawUnpaidInvoicesHeader(doc, dto);
+
+      // Tableau des factures impayées
+      this.drawUnpaidInvoicesTable(doc, invoices);
+
+      // Pied de page avec totaux
+      this.drawUnpaidInvoicesFooter(doc, invoices);
+
+      // Finaliser le document
+      doc.end();
+    } catch (error) {
+      if (!res.headersSent) {
+        res.status(500).json({
+          message: `Erreur lors de la génération du PDF: ${error.message}`,
+        });
+      }
+      throw new BadRequestException(
+        `Erreur lors de la génération du PDF: ${error.message}`,
+      );
+    }
+  }
+
+  private drawUnpaidInvoicesHeader(
+    doc: PDFDocument,
+    dto: GetUnpaidInvoicesDto,
+  ): void {
+    // Logo et informations de l'entreprise (partie gauche)
+    doc
+      .fontSize(16)
+      .font('Helvetica-Bold')
+      .text('VOTRE ENTREPRISE', this.MARGINS, this.MARGINS)
+      .fontSize(10)
+      .font('Helvetica')
+      .text('Adresse de votre entreprise', this.MARGINS, this.MARGINS + 25)
+      .text('Téléphone : +227 XX XX XX XX', this.MARGINS, this.MARGINS + 40)
+      .text('Email : contact@entreprise.com', this.MARGINS, this.MARGINS + 55);
+
+    // Titre du document (centré)
+    doc
+      .fontSize(18)
+      .font('Helvetica-Bold')
+      .text('RELEVÉ DES FACTURES IMPAYÉES', 0, this.MARGINS + 80, {
+        align: 'center',
+        width: doc.page.width,
+      });
+
+    // Informations de filtre (partie droite)
+    let yPosition = this.MARGINS + 120;
+    doc.fontSize(10).font('Helvetica');
+
+    if (dto.id_client) {
+      doc.text(`Client ID : ${dto.id_client}`, doc.page.width - 200, yPosition);
+      yPosition += 15;
+    }
+
+    if (dto.date_debut || dto.date_fin) {
+      const dateDebut = dto.date_debut
+        ? new Date(dto.date_debut).toLocaleDateString('fr-FR')
+        : '-';
+      const dateFin = dto.date_fin
+        ? new Date(dto.date_fin).toLocaleDateString('fr-FR')
+        : '-';
+      doc.text(
+        `Période : ${dateDebut} au ${dateFin}`,
+        doc.page.width - 200,
+        yPosition,
+      );
+      yPosition += 15;
+    }
+
+    doc.text(
+      `Date d'édition : ${new Date().toLocaleDateString('fr-FR')}`,
+      doc.page.width - 200,
+      yPosition,
+    );
+  }
+
+  private drawUnpaidInvoicesTable(doc: PDFDocument, invoices: any[]): void {
+    const startY = this.MARGINS + 180;
+    let currentY = startY;
+
+    // En-têtes du tableau
+    const headers = [
+      'Date',
+      'N° Facture',
+      'Client',
+      'Montant Total',
+      'Montant Payé',
+      'Montant Restant',
+    ];
+    const columnWidths = [80, 90, 120, 80, 80, 80];
+    const startX = this.MARGINS;
+
+    // Dessiner les en-têtes
+    doc.fontSize(10).font('Helvetica-Bold').fillColor('#000000');
+
+    let currentX = startX;
+    headers.forEach((header, index) => {
+      doc
+        .rect(currentX, currentY, columnWidths[index], 25)
+        .fillAndStroke('#f0f0f0', '#000000')
+        .fillColor('#000000')
+        .text(header, currentX + 5, currentY + 8, {
+          width: columnWidths[index] - 10,
+          align: 'center',
+        });
+      currentX += columnWidths[index];
+    });
+
+    currentY += 25;
+
+    // Dessiner les lignes de données
+    doc.font('Helvetica').fontSize(9);
+
+    invoices.forEach((invoice, index) => {
+      // Vérifier si on a besoin d'une nouvelle page
+      if (currentY > doc.page.height - 100) {
+        doc.addPage();
+        currentY = this.MARGINS;
+      }
+
+      const rowData = [
+        new Date(invoice.date_commande_vente).toLocaleDateString('fr-FR'),
+        invoice.numero_facture_certifiee || 'N/A',
+        `${invoice.client?.prenom || ''} ${invoice.client?.nom || ''}`.trim(),
+        `${invoice.montant_total?.toLocaleString('fr-FR')} FCFA`,
+        `${invoice.montant_paye?.toLocaleString('fr-FR')} FCFA`,
+        `${invoice.montant_restant?.toLocaleString('fr-FR')} FCFA`,
+      ];
+
+      currentX = startX;
+
+      // Couleur de fond alternée pour les lignes
+      const fillColor = index % 2 === 0 ? '#ffffff' : '#f8f8f8';
+
+      rowData.forEach((data, colIndex) => {
+        doc
+          .rect(currentX, currentY, columnWidths[colIndex], 20)
+          .fillAndStroke(fillColor, '#cccccc')
+          .fillColor('#000000')
+          .text(data, currentX + 3, currentY + 5, {
+            width: columnWidths[colIndex] - 6,
+            align: colIndex >= 3 ? 'right' : 'left',
+          });
+        currentX += columnWidths[colIndex];
+      });
+
+      currentY += 20;
+    });
+  }
+
+  private drawUnpaidInvoicesFooter(doc: PDFDocument, invoices: any[]): void {
+    // Calculer les totaux
+    const totalMontantTotal = invoices.reduce(
+      (sum, invoice) => sum + (invoice.montant_total || 0),
+      0,
+    );
+    const totalMontantPaye = invoices.reduce(
+      (sum, invoice) => sum + (invoice.montant_paye || 0),
+      0,
+    );
+    const totalMontantRestant = invoices.reduce(
+      (sum, invoice) => sum + (invoice.montant_restant || 0),
+      0,
+    );
+
+    // Position du pied de page
+    const footerY = doc.page.height - 150;
+
+    // Ligne de séparation
+    doc
+      .moveTo(this.MARGINS, footerY)
+      .lineTo(doc.page.width - this.MARGINS, footerY)
+      .stroke('#000000');
+
+    // Résumé des totaux
+    doc
+      .fontSize(12)
+      .font('Helvetica-Bold')
+      .text('RÉSUMÉ', this.MARGINS, footerY + 20);
+
+    doc
+      .fontSize(10)
+      .font('Helvetica')
+      .text(
+        `Nombre de factures impayées : ${invoices.length}`,
+        this.MARGINS,
+        footerY + 40,
+      )
+      .text(
+        `Montant total des factures : ${totalMontantTotal.toLocaleString('fr-FR')} FCFA`,
+        this.MARGINS,
+        footerY + 55,
+      )
+      .text(
+        `Montant total payé : ${totalMontantPaye.toLocaleString('fr-FR')} FCFA`,
+        this.MARGINS,
+        footerY + 70,
+      )
+      .font('Helvetica-Bold')
+      .text(
+        `Montant total restant dû : ${totalMontantRestant.toLocaleString('fr-FR')} FCFA`,
+        this.MARGINS,
+        footerY + 85,
+      );
+
+    // Note de bas de page
+    doc
+      .fontSize(8)
+      .font('Helvetica-Oblique')
+      .text(
+        'Ce relevé a été généré automatiquement par le système de gestion.',
+        0,
+        doc.page.height - 30,
+        {
+          align: 'center',
+          width: doc.page.width,
+        },
+      );
   }
 }

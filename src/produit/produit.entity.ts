@@ -20,6 +20,7 @@ import { CaptureStock } from '../capture_stock/capture_stock.entity';
 import { Marque } from 'src/marque/marque.entity';
 import { Fabricant } from 'src/fabricant/fabricant.entity';
 import { SuiviStock } from 'src/suivi_stock/suivi_stock.entity';
+import { Audit } from 'src/audit/entities/audit.entity';
 
 @Entity('produit')
 export class Produit {
@@ -164,4 +165,7 @@ export class Produit {
 
   @OneToMany(() => CaptureStock, (captureStock) => captureStock.produit)
   captureStocks: CaptureStock[];
+
+  @OneToMany(() => Audit, (audit) => audit.produit)
+  audits: Audit[];
 }
