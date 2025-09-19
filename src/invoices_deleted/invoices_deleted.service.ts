@@ -1,4 +1,3 @@
-
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -14,11 +13,13 @@ export class InvoicesDeletedService {
   ) {}
 
   async findAll(): Promise<InvoicesDeleted[]> {
-    return this.invoices_deletedRepository.find();
+    return this.invoices_deletedRepository.find({});
   }
 
   async findOne(id: number): Promise<InvoicesDeleted> {
-    const entity = await this.invoices_deletedRepository.findOne({ where: { id_invoices_deleted: id } });
+    const entity = await this.invoices_deletedRepository.findOne({
+      where: { id_invoices_deleted: id },
+    });
     if (!entity) throw new NotFoundException('InvoicesDeleted not found');
     return entity;
   }
@@ -28,7 +29,10 @@ export class InvoicesDeletedService {
     return this.invoices_deletedRepository.save(entity);
   }
 
-  async update(id: number, dto: UpdateInvoicesDeletedDto): Promise<InvoicesDeleted> {
+  async update(
+    id: number,
+    dto: UpdateInvoicesDeletedDto,
+  ): Promise<InvoicesDeleted> {
     const entity = await this.findOne(id);
     Object.assign(entity, dto);
     return this.invoices_deletedRepository.save(entity);

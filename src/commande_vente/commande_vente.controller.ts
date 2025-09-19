@@ -52,48 +52,6 @@ export class CommandeVenteController {
 
   @Auth(AuthType.None)
   @Get('unpaid-invoices/pdf')
-  // @ApiOperation({
-  //   summary: 'Générer le PDF du relevé des factures impayées',
-  //   description:
-  //     'Génère un document PDF contenant le relevé des factures impayées avec possibilité de filtrage par client et dates',
-  // })
-  // @ApiQuery({
-  //   name: 'id_client',
-  //   required: false,
-  //   type: Number,
-  //   description: 'ID du client pour filtrer les factures',
-  // })
-  // @ApiQuery({
-  //   name: 'date_debut',
-  //   required: false,
-  //   type: String,
-  //   description: 'Date de début (format: YYYY-MM-DD)',
-  // })
-  // @ApiQuery({
-  //   name: 'date_fin',
-  //   required: false,
-  //   type: String,
-  //   description: 'Date de fin (format: YYYY-MM-DD)',
-  // })
-  // @ApiResponse({
-  //   status: 200,
-  //   description: 'PDF généré avec succès',
-  //   content: {
-  //     'application/pdf': {
-  //       schema: {
-  //         type: 'string',
-  //         format: 'binary',
-  //       },
-  //     },
-  //   },
-  // })
-  // @ApiResponse({ status: 404, description: 'Aucune facture impayée trouvée' })
-  // async generateUnpaidInvoicesPdf(
-  //   @Query() dto: GetUnpaidInvoicesDto,
-  //   @Res() res: Response,
-  // ): Promise<void> {
-  //   return this.commandeVenteService.generateUnpaidInvoicesPdf(dto, res);
-  // }
   @Get('findtout')
   findTout() {
     return this.commandeVenteService.getA();

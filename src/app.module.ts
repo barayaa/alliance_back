@@ -71,7 +71,7 @@ import { AuditModule } from './audit/audit.module';
     ConfigModule.forRoot({}),
     TypeOrmModule.forRoot({
       type: 'mariadb',
-      host: 'localhost',
+      host: 'host',
       port: 3306,
       username: 'root',
       password: 'root',
