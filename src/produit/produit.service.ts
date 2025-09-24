@@ -109,8 +109,17 @@ export class ProduitService {
     return query.getMany();
   }
 
+  // async findAllForExport(searchTerm?: string): Promise<Produit[]> {
+  //   return this.findAll(searchTerm);
+  // }
+
   async findAllForExport(searchTerm?: string): Promise<Produit[]> {
-    return this.findAll(searchTerm);
+    console.log('findAllForExport appelé avec searchTerm:', searchTerm);
+    const produits = await this.findAll(searchTerm);
+    // Log pour vérifier si ACFOL est inclus
+    const acfol = produits.find((p) => p.id_produit === 409);
+    console.log('Produit ACFOL dans findAllForExport:', acfol || 'Non trouvé');
+    return produits;
   }
 
   async findOne(id: number): Promise<Produit> {
@@ -213,11 +222,15 @@ export class ProduitService {
     date_fin?: string;
   }): Promise<number> {
     try {
-      const produits = await this.produitRepository.find({
-        select: ['stock_courant', 'prix_unitaire'],
-      });
+      const produits = await this.produitRepository
+        .createQueryBuilder('produit')
+        .select(['produit.stock_courant', 'produit.prix_unitaire'])
+        .where('produit.produit != :timbre', { timbre: 'Timbre fiscale' })
+        .getRawMany();
+
       return produits.reduce(
-        (sum, p) => sum + (p.stock_courant || 0) * (p.prix_unitaire || 0),
+        (sum, p) =>
+          sum + (p.produit_stock_courant || 0) * (p.produit_prix_unitaire || 0),
         0,
       );
     } catch (error) {
@@ -227,6 +240,25 @@ export class ProduitService {
       );
     }
   }
+  // async getStockValue(dto: {
+  //   date_debut?: string;
+  //   date_fin?: string;
+  // }): Promise<number> {
+  //   try {
+  //     const produits = await this.produitRepository.find({
+  //       select: ['stock_courant', 'prix_unitaire'],
+  //     });
+  //     return produits.reduce(
+  //       (sum, p) => sum + (p.stock_courant || 0) * (p.prix_unitaire || 0),
+  //       0,
+  //     );
+  //   } catch (error) {
+  //     throw new HttpException(
+  //       'Erreur lors du calcul de la valeur du stock',
+  //       HttpStatus.INTERNAL_SERVER_ERROR,
+  //     );
+  //   }
+  // }
 
   async getStockByProduct(dto: {
     date_debut?: string;
@@ -243,6 +275,40 @@ export class ProduitService {
     } catch (error) {
       throw new HttpException(
         'Erreur lors de la récupération des stocks par produit',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  async exportAllProducts(searchTerm?: string): Promise<
+    {
+      produit: string;
+      prix_unitaire: number;
+      stock_courant: number;
+      total: number;
+    }[]
+  > {
+    try {
+      const produits = await this.produitRepository
+        .createQueryBuilder('produit')
+        .select([
+          'produit.produit AS produit',
+          'produit.prix_unitaire AS prix_unitaire',
+          'produit.stock_courant AS stock_courant',
+        ])
+        .where('produit.produit != :timbre', { timbre: 'Timbre fiscale' })
+        .orderBy('produit.produit', 'ASC')
+        .getRawMany();
+
+      return produits.map((p) => ({
+        produit: p.produit,
+        prix_unitaire: p.prix_unitaire || 0,
+        stock_courant: p.stock_courant || 0,
+        total: (p.prix_unitaire || 0) * (p.stock_courant || 0),
+      }));
+    } catch (error) {
+      throw new HttpException(
+        "Erreur lors de l'exportation des produits",
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }

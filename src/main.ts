@@ -7,6 +7,7 @@ async function bootstrap() {
     origin: '*', // Adjust this to your needs
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
     credentials: true,
+    allowedHeaders: ['Content-Type', 'Authorization'], // Ajoute les en-têtes utilisés
   });
   app.setGlobalPrefix('api');
   await app.listen(process.env.PORT || 3000, '0.0.0.0');

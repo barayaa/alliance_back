@@ -65,23 +65,23 @@ import { AuditModule } from './audit/audit.module';
 @Module({
   imports: [
     ConfigModule.forRoot({
-      isGlobal: true, // rend ConfigService dispo partout
+      isGlobal: true,
     }),
 
     ConfigModule.forRoot({}),
     TypeOrmModule.forRoot({
       type: 'mariadb',
-      host: 'host',
+      host: 'y2w3wxldca8enczv.cbetxkdyhwsb.us-east-1.rds.amazonaws.com',
       port: 3306,
-      username: 'root',
-      password: 'root',
-      database: 'all_db',
+      username: 'eue0kgjy0g754e2c',
+      password: 'j1lx54lu8ep9bszb',
+      database: 'w14j56cmvoln8hwx',
       migrations: ['src/migrations/*.ts'],
       autoLoadEntities: true,
       synchronize: false,
-      // ssl: {
-      //   rejectUnauthorized: false,
-      // },
+      ssl: {
+        rejectUnauthorized: false,
+      },
       poolSize: 3,
       extra: {
         connectionLimit: 3,

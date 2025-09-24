@@ -9,16 +9,32 @@ import {
   Request,
   Query,
   BadRequestException,
+  HttpException,
+  HttpStatus,
+  Res,
 } from '@nestjs/common';
 import { CommandeAchatService } from './commande_achat.service';
 import { CreateCommandeAchatDto } from './dto/create-commande_achat.dto';
 import { UpdateCommandeAchatDto } from './dto/update-commande_achat.dto';
 import { CommandeAchat } from './commande_achat.entity';
 import { User } from '../user/user.entity';
+import { Response } from 'express';
 
 @Controller('commande_achat')
 export class CommandeAchatController {
   constructor(private readonly commande_achatService: CommandeAchatService) {}
+
+  @Get('export_inventaire')
+  async exportStock(@Query('search') searchTerm: string, @Res() res: Response) {
+    try {
+      await this.commande_achatService.exportStockToExcel(searchTerm, res);
+    } catch (error) {
+      throw new HttpException(
+        "Erreur lors de l'exportation du stock en Excel",
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
 
   @Get('stock/all-products')
   async checkStockAllProducts() {

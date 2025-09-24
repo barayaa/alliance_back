@@ -6,5 +6,7 @@ interface StockConsistency {
   total_ventes: number;
   stock_calcule: number;
   difference: number;
+  prix_unitaire?: number;
+  valeur_stock?: number;
   error?: string; // Pour signaler les anomalies
 }

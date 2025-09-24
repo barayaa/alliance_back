@@ -5,6 +5,10 @@ import {
   UnauthorizedException,
   forwardRef,
   Inject,
+  Query,
+  Res,
+  HttpException,
+  HttpStatus,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Between, Like, EntityManager } from 'typeorm';
@@ -21,7 +25,8 @@ import { User } from '../user/user.entity';
 import { LignesCommandeAchatService } from '../lignes_commande_achat/lignes_commande_achat.service';
 import { Log } from 'src/log/log.entity';
 import { Fournisseur } from 'src/fournisseur/fournisseur.entity';
-
+import * as XLSX from 'xlsx';
+import { Response } from 'express';
 // interface StockConsistency {
 //   id_produit: number;
 //   nom_produit: string;
@@ -520,8 +525,16 @@ export class CommandeAchatService {
 
   async checkStockAllProducts(): Promise<StockConsistency[]> {
     try {
-      // Fetch all products
-      const produits = await this.produitRepository.find();
+      // Fetch all products, ordered alphabetically by produit
+      const produits = await this.produitRepository
+        .createQueryBuilder('produit')
+        .select([
+          'produit.id_produit AS id_produit',
+          'produit.produit AS produit',
+          'produit.stock_courant AS stock_courant',
+        ])
+        .orderBy('produit.produit', 'ASC')
+        .getRawMany();
 
       // Fetch total achats and ventes for all products
       const achats = await this.lignesCommandeAchatRepository
@@ -549,7 +562,7 @@ export class CommandeAchatService {
 
         const total_achats = Number(totalAchats?.total) || 0;
         const total_ventes = Number(totalVentes?.total) || 0;
-        const stock_calcule = total_achats - total_ventes;
+        const stock_calcule = Math.max(total_achats - total_ventes, 0); // Convert negative stock to 0
         const difference = produit.stock_courant - stock_calcule;
 
         return {
@@ -575,6 +588,207 @@ export class CommandeAchatService {
       );
       throw new BadRequestException(
         'Erreur lors de la vérification des stocks',
+      );
+    }
+  }
+
+  // async checkStockAllProducts(): Promise<StockConsistency[]> {
+  //   try {
+  //     // Fetch all products
+  //     const produits = await this.produitRepository.find();
+
+  //     // Fetch total achats and ventes for all products
+  //     const achats = await this.lignesCommandeAchatRepository
+  //       .createQueryBuilder('lca')
+  //       .select('lca.designation', 'id_produit')
+  //       .addSelect('SUM(lca.quantite)', 'total')
+  //       .groupBy('lca.designation')
+  //       .orderBy('produit.produit', 'ASC')
+  //       .getRawMany();
+
+  //     const ventes = await this.lignesCommandeVenteRepository
+  //       .createQueryBuilder('lcv')
+  //       .select('lcv.designation', 'id_produit')
+  //       .addSelect('SUM(lcv.quantite)', 'total')
+  //       .groupBy('lcv.designation')
+  //       .getRawMany();
+
+  //     // Map results to StockConsistency
+  //     const result: StockConsistency[] = produits.map((produit) => {
+  //       const totalAchats = achats.find(
+  //         (a) => a.id_produit === produit.id_produit,
+  //       );
+  //       const totalVentes = ventes.find(
+  //         (v) => v.id_produit === produit.id_produit,
+  //       );
+
+  //       const total_achats = Number(totalAchats?.total) || 0;
+  //       const total_ventes = Number(totalVentes?.total) || 0;
+  //       const stock_calcule = total_achats - total_ventes;
+  //       const difference = produit.stock_courant - stock_calcule;
+
+  //       return {
+  //         id_produit: produit.id_produit,
+  //         nom_produit: produit.produit,
+  //         stock_courant: produit.stock_courant,
+  //         total_achats,
+  //         total_ventes,
+  //         stock_calcule,
+  //         difference,
+  //       };
+  //     });
+
+  //     console.log(
+  //       'Résultat de la vérification des stocks:',
+  //       JSON.stringify(result, null, 2),
+  //     );
+  //     return result;
+  //   } catch (error) {
+  //     console.error(
+  //       'Erreur lors de la vérification des stocks:',
+  //       JSON.stringify(error, null, 2),
+  //     );
+  //     throw new BadRequestException(
+  //       'Erreur lors de la vérification des stocks',
+  //     );
+  //   }
+  // }
+
+  async exportStockToExcel(
+    @Query('search') searchTerm: string,
+    @Res() res: Response,
+  ) {
+    try {
+      // Fetch all products with their unit prices
+      const produits = await this.produitRepository
+        .createQueryBuilder('produit')
+        .select([
+          'produit.id_produit AS id_produit',
+          'produit.produit AS produit',
+          'produit.prix_unitaire AS prix_unitaire',
+          'produit.stock_courant AS stock_courant',
+        ])
+        .where('produit.produit != :timbre', { timbre: 'Timbre fiscale' })
+        .orderBy('produit.produit', 'ASC')
+        .getRawMany();
+
+      // Fetch total achats and ventes for all products
+      const achats = await this.lignesCommandeAchatRepository
+        .createQueryBuilder('lca')
+        .select('lca.designation', 'id_produit')
+        .addSelect('SUM(lca.quantite)', 'total')
+        .groupBy('lca.designation')
+        .getRawMany();
+
+      const ventes = await this.lignesCommandeVenteRepository
+        .createQueryBuilder('lcv')
+        .select('lcv.designation', 'id_produit')
+        .addSelect('SUM(lcv.quantite)', 'total')
+        .groupBy('lcv.designation')
+        .getRawMany();
+
+      // Map results to StockConsistency with value calculation
+      const result: StockConsistency[] = produits.map((produit) => {
+        const totalAchats = achats.find(
+          (a) => a.id_produit === produit.id_produit,
+        );
+        const totalVentes = ventes.find(
+          (v) => v.id_produit === produit.id_produit,
+        );
+
+        const total_achats = Number(totalAchats?.total) || 0;
+        const total_ventes = Number(totalVentes?.total) || 0;
+        const stock_calcule = Math.max(total_achats - total_ventes, 0); // Convert negative stock to 0
+        const prix_unitaire = Number(produit.prix_unitaire) || 0;
+        const valeur_stock = stock_calcule * prix_unitaire;
+
+        return {
+          id_produit: produit.id_produit,
+          nom_produit: produit.produit,
+          stock_courant: produit.stock_courant,
+          total_achats,
+          total_ventes,
+          stock_calcule,
+          difference: produit.stock_courant - stock_calcule,
+          prix_unitaire,
+          valeur_stock,
+        };
+      });
+
+      // Calculate the total stock value
+      const sommeTotaleValeur = result.reduce(
+        (sum, p) => sum + (p.valeur_stock || 0),
+        0,
+      );
+
+      // Prepare data for Excel, including the total sum row
+      const dataForExcel = [
+        ...result.map((p) => ({
+          produit: p.nom_produit,
+          prix_unitaire: p.prix_unitaire,
+          stock_calcule: p.stock_calcule,
+          valeur_stock: p.valeur_stock,
+        })),
+        { produit: '', prix_unitaire: '', stock_calcule: '', valeur_stock: '' }, // Empty row
+        {
+          produit: 'Somme totale',
+          prix_unitaire: '',
+          stock_calcule: '',
+          valeur_stock: sommeTotaleValeur,
+        },
+      ];
+
+      // Create a new worksheet
+      const worksheet = XLSX.utils.json_to_sheet(dataForExcel, {
+        header: ['produit', 'prix_unitaire', 'stock_calcule', 'valeur_stock'],
+      });
+
+      // Apply formatting to the total sum cell
+      const totalRowIndex = result.length + 2; // +1 for header, +1 for empty row
+      worksheet[`D${totalRowIndex + 1}`] = {
+        v: sommeTotaleValeur,
+        t: 'n', // Numeric type
+        s: {
+          font: { bold: true }, // Bold font
+          alignment: { horizontal: 'right' },
+        },
+      };
+
+      // Adjust column widths
+      worksheet['!cols'] = [
+        { wch: 30 }, // produit
+        { wch: 15 }, // prix_unitaire
+        { wch: 15 }, // stock_calcule
+        { wch: 15 }, // valeur_stock
+      ];
+
+      // Create workbook and append worksheet
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Stock');
+
+      // Generate Excel buffer
+      const excelBuffer = XLSX.write(workbook, {
+        bookType: 'xlsx',
+        type: 'buffer',
+      });
+
+      // Set response headers
+      res.set({
+        'Content-Type':
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'Content-Disposition': 'attachment; filename="stock_inventaire.xlsx"',
+      });
+
+      // Send the buffer to the client
+      res.send(excelBuffer);
+    } catch (error) {
+      console.error(
+        "Erreur lors de l'exportation du stock en Excel:",
+        JSON.stringify(error, null, 2),
+      );
+      throw new HttpException(
+        "Erreur lors de l'exportation du stock en Excel",
+        HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
   }

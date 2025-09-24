@@ -1659,7 +1659,7 @@ export class CommandeVenteService {
       numeroFacture,
     });
 
-    const where: any = { type_facture: 'FV' };
+    const where: any = { type_facture: 'FV', statut: 0 };
     if (startDate && endDate) {
       where.date_commande_vente = Between(
         new Date(startDate),
@@ -2061,7 +2061,7 @@ export class CommandeVenteService {
           CommandeVente,
           { id_commande_vente },
           {
-            statut: 2, // Statut annulé
+            statut: 1, // Statut annulé
             montant_total: 0,
             montant_restant: 0,
             tva: 0,
