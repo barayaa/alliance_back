@@ -192,6 +192,21 @@ export class CommandeVenteController {
     );
   }
 
+  @Get('cancel_invoice')
+  async findAllCancel(
+    @Query('startDate') startDate: string,
+    @Query('endDate') endDate: string,
+    @Query('idClient') idClient: string,
+    @Query('numeroFacture') numeroFacture: string,
+  ) {
+    return this.commandeVenteService.findAllCancel(
+      startDate,
+      endDate,
+      idClient ? parseInt(idClient) : undefined,
+      numeroFacture,
+    );
+  }
+
   @Get(':id/pdf')
   @Auth(AuthType.None)
   async generatePdf(

@@ -76,12 +76,19 @@ import { AuditModule } from './audit/audit.module';
       username: 'eue0kgjy0g754e2c',
       password: 'j1lx54lu8ep9bszb',
       database: 'w14j56cmvoln8hwx',
+
+      // type: 'mariadb',
+      // host: 'localhost',
+      // port: 3306,
+      // username: 'root',
+      // password: 'root',
+      // database: 'mercredi_db',
       migrations: ['src/migrations/*.ts'],
       autoLoadEntities: true,
       synchronize: false,
-      ssl: {
-        rejectUnauthorized: false,
-      },
+      // ssl: {
+      //   rejectUnauthorized: false,
+      // },
       poolSize: 3,
       extra: {
         connectionLimit: 3,

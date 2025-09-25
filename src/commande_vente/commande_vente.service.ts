@@ -1645,40 +1645,100 @@ export class CommandeVenteService {
     });
   }
 
+  // async findAll(
+  //   startDate?: string,
+  //   endDate?: string,
+  //   idClient?: number,
+  //   numeroFacture?: string,
+  // ): Promise<CommandeVente[]> {
+  //   // Log input parameters
+  //   console.log('findAll parameters:', {
+  //     startDate,
+  //     endDate,
+  //     idClient,
+  //     numeroFacture,
+  //   });
+
+  //   const where: any = { type_facture: 'FV', statut: 0 };
+  //   if (startDate && endDate) {
+  //     where.date_commande_vente = Between(
+  //       new Date(startDate),
+  //       new Date(endDate),
+  //     );
+  //   }
+  //   if (idClient) {
+  //     where.id_client = idClient;
+  //   }
+  //   if (numeroFacture) {
+  //     // where.id_commande_vente = Like(`%${numeroFacture}%`);
+  //     where.id_commande_vente = numeroFacture;
+  //   }
+
+  //   // Log the query conditions
+  //   console.log('Query conditions:', where);
+
+  //   try {
+  //     const result = await this.commandeVenteRepository.find({
+  //       where,
+  //       relations: ['client'],
+  //       select: [
+  //         'id_commande_vente',
+  //         'date_commande_vente',
+  //         'numero_seq',
+  //         'numero_facture_certifiee',
+  //         'montant_total',
+  //         'id_client',
+  //       ],
+  //       order: { date_commande_vente: 'DESC' },
+  //     });
+
+  //     // Log the result
+  //     console.log('Factures:', result);
+  //     return result;
+  //   } catch (error) {
+  //     // Log the error
+  //     console.log('Error fetching factures in findAll:', error);
+  //     throw new BadRequestException('Erreur lors du chargement des factures.');
+  //   }
+  // }
+
   async findAll(
     startDate?: string,
     endDate?: string,
     idClient?: number,
     numeroFacture?: string,
   ): Promise<CommandeVente[]> {
-    // Log input parameters
-    console.log('findAll parameters:', {
-      startDate,
-      endDate,
-      idClient,
-      numeroFacture,
-    });
+    const where: any = {
+      type_facture: 'FV',
+      statut: 0,
+    };
 
-    const where: any = { type_facture: 'FV', statut: 0 };
+    // Validation et gestion des dates
     if (startDate && endDate) {
-      where.date_commande_vente = Between(
-        new Date(startDate),
-        new Date(endDate),
-      );
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+
+      // Validation des dates
+      if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+        throw new BadRequestException('Dates invalides.');
+      }
+
+      // Ajuster la date de fin pour inclure toute la journée
+      end.setHours(23, 59, 59, 999);
+
+      where.date_commande_vente = Between(start, end);
     }
+
     if (idClient) {
       where.id_client = idClient;
     }
+
     if (numeroFacture) {
-      // where.id_commande_vente = Like(`%${numeroFacture}%`);
       where.id_commande_vente = numeroFacture;
     }
 
-    // Log the query conditions
-    console.log('Query conditions:', where);
-
     try {
-      const result = await this.commandeVenteRepository.find({
+      const query: any = {
         where,
         relations: ['client'],
         select: [
@@ -1690,18 +1750,81 @@ export class CommandeVenteService {
           'id_client',
         ],
         order: { date_commande_vente: 'DESC' },
-      });
+        // Appliquer la limite de 30 seulement si aucune date n'est fournie
+        ...(startDate && endDate ? {} : { take: 30, skip: 0 }),
+        cache: {
+          id: `factures_${startDate}_${endDate}_${idClient}_${numeroFacture}`,
+          milliseconds: 60000, // Cache de 1 minute
+        },
+      };
 
-      // Log the result
-      console.log('Factures:', result);
-      return result;
+      return await this.commandeVenteRepository.find(query);
     } catch (error) {
-      // Log the error
-      console.log('Error fetching factures in findAll:', error);
       throw new BadRequestException('Erreur lors du chargement des factures.');
     }
   }
 
+  async findAllCancel(
+    startDate?: string,
+    endDate?: string,
+    idClient?: number,
+    numeroFacture?: string,
+  ): Promise<CommandeVente[]> {
+    const where: any = {
+      type_facture: 'FV',
+      statut: 1,
+    };
+
+    // Validation et gestion des dates
+    if (startDate && endDate) {
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+
+      // Validation des dates
+      if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+        throw new BadRequestException('Dates invalides.');
+      }
+
+      // Ajuster la date de fin pour inclure toute la journée
+      end.setHours(23, 59, 59, 999);
+
+      where.date_commande_vente = Between(start, end);
+    }
+
+    if (idClient) {
+      where.id_client = idClient;
+    }
+
+    if (numeroFacture) {
+      where.id_commande_vente = numeroFacture;
+    }
+
+    try {
+      const query: any = {
+        where,
+        relations: ['client'],
+        select: [
+          'id_commande_vente',
+          'date_commande_vente',
+          'numero_seq',
+          'numero_facture_certifiee',
+          'montant_total',
+          'id_client',
+        ],
+        order: { date_commande_vente: 'DESC' },
+        // Appliquer la limite de 30 seulement si aucune date n'est fournie
+        ...(startDate && endDate ? {} : { take: 30, skip: 0 }),
+        cache: {
+          id: `factures_${startDate}_${endDate}_${idClient}_${numeroFacture}`,
+          milliseconds: 60000, // Cache de 1 minute
+        },
+      };
+
+      return await this.commandeVenteRepository.find(query);
+    } catch (error) {
+      throw new BadRequestException('Erreur lors du chargement des factures.');
+    }
+  }
   async findOne(id: number): Promise<CommandeVente> {
     const entity = await this.commandeVenteRepository.findOne({
       where: { id_commande_vente: id },
@@ -1971,7 +2094,6 @@ export class CommandeVenteService {
   ): Promise<void> {
     return this.commandeVenteRepository.manager.transaction(async (manager) => {
       try {
-        // Étape 1 : Récupérer la commande avec ses relations
         const commande = await manager.findOne(CommandeVente, {
           where: { id_commande_vente, type_facture: 'FV' },
           relations: ['client', 'lignes', 'lignes.produit'],
