@@ -24,17 +24,31 @@ export class ReglementController {
   constructor(private readonly reglementService: ReglementService) {}
 
   @Post('payement')
-  async createReglement(
-    @Body(ValidationPipe) createReglementDto: CreateReglementDto,
-  ): Promise<PaymentDistributionResult> {
-    try {
-      return await this.reglementService.createReglement(createReglementDto);
-    } catch (error) {
-      throw new BadRequestException(
-        error.message || 'Erreur lors de la création du règlement',
-      );
-    }
+  async createReglement(@Body() createReglementDto: any) {
+    // SOLUTION TEMPORAIRE: Normaliser le type avant validation
+    const normalizedDto = {
+      ...createReglementDto,
+      id_commande_vente: createReglementDto.id_commande_vente?.toString(),
+    };
+
+    console.log('DTO reçu (original):', createReglementDto);
+    console.log('DTO normalisé:', normalizedDto);
+
+    return this.reglementService.createReglement(normalizedDto);
   }
+
+  // @Post('payement')
+  // async createReglement(
+  //   @Body(ValidationPipe) createReglementDto: CreateReglementDto,
+  // ): Promise<PaymentDistributionResult> {
+  //   try {
+  //     return await this.reglementService.createReglement(createReglementDto);
+  //   } catch (error) {
+  //     throw new BadRequestException(
+  //       error.message || 'Erreur lors de la création du règlement',
+  //     );
+  //   }
+  // }
 
   @Get('historique/:id_client')
   async findHistoriqueByClient(
