@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from './user.entity';
@@ -34,8 +38,18 @@ export class UserService {
   // }
 
   async update(id: number, dto: UpdateUserDto): Promise<User> {
+    if (isNaN(id) || typeof id !== 'number' || id <= 0) {
+      throw new BadRequestException('Invalid ID provided');
+    }
     const entity = await this.findOne(id);
-    Object.assign(entity, dto);
+
+    // Create a new object with only defined fields from dto, excluding password if undefined
+    const updateData = { ...dto };
+    if (dto.password === undefined) {
+      delete updateData.password; // Remove password from update if not provided
+    }
+
+    Object.assign(entity, updateData);
     return this.userRepository.save(entity);
   }
 
