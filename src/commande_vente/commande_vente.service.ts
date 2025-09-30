@@ -486,6 +486,149 @@ export class CommandeVenteService {
     return infoTop + 55; // 55px après le début des infos pour laisser de l'espace
   }
 
+  // private drawFullInvoice(doc: PDFDocument, commande: any): void {
+  //   // Récupérer la position Y après l'en-tête
+  //   const tableTop = this.drawHeader(doc, commande, 'full');
+  //   const tableLeft = this.MARGINS;
+  //   const columnWidths = [220, 70, 80, 90, 80]; // 5 colonnes au lieu de 6
+
+  //   // En-tête du tableau
+  //   this.drawTableHeader(doc, tableTop, tableLeft, columnWidths, [
+  //     'Désignation',
+  //     'Qté',
+  //     'P.U.',
+  //     'Expiration',
+  //     'Montant',
+  //   ]);
+
+  //   // Lignes du tableau
+  //   let y = tableTop + 25;
+  //   let subtotal = 0;
+
+  //   doc.fontSize(8).font('Helvetica');
+
+  //   commande.lignes.forEach((ligne: any, index: number) => {
+  //     if (y + this.ROW_HEIGHT > this.MAX_Y - 100) {
+  //       doc.addPage();
+  //       const newTableTop = this.drawHeader(doc, commande, 'full');
+  //       this.drawTableHeader(doc, newTableTop, tableLeft, columnWidths, [
+  //         'Désignation',
+  //         'Qté',
+  //         'P.U.',
+  //         'Expiration',
+  //         'Montant',
+  //       ]);
+  //       y = newTableTop + 25;
+  //     }
+
+  //     const totalLigne = ligne.prix_vente * ligne.quantite;
+  //     subtotal += totalLigne;
+
+  //     let x = tableLeft;
+
+  //     // Bordures verticales de début
+  //     doc
+  //       .moveTo(tableLeft, y)
+  //       .lineTo(tableLeft, y + this.ROW_HEIGHT)
+  //       .stroke();
+
+  //     // Désignation
+  //     const designation = sanitizeString(
+  //       ligne.produit?.produit || ligne.designation?.toString() || 'N/A',
+  //     );
+  //     doc.text(designation.substring(0, 35), x + 5, y + 5, {
+  //       width: columnWidths[0] - 10,
+  //       align: 'left',
+  //     });
+  //     x += columnWidths[0];
+
+  //     // Bordure verticale après Désignation
+  //     doc
+  //       .moveTo(x, y)
+  //       .lineTo(x, y + this.ROW_HEIGHT)
+  //       .stroke();
+
+  //     // Quantité
+  //     doc.text(ligne.quantite.toString(), x + 5, y + 5, {
+  //       width: columnWidths[1] - 10,
+  //       align: 'center',
+  //     });
+  //     x += columnWidths[1];
+
+  //     // Bordure verticale après Quantité
+  //     doc
+  //       .moveTo(x, y)
+  //       .lineTo(x, y + this.ROW_HEIGHT)
+  //       .stroke();
+
+  //     // Prix unitaire
+  //     doc.text(Number(ligne.prix_vente || 0).toFixed(2), x + 5, y + 5, {
+  //       width: columnWidths[2] - 10,
+  //       align: 'right',
+  //     });
+  //     x += columnWidths[2];
+
+  //     // Bordure verticale après P.U.
+  //     doc
+  //       .moveTo(x, y)
+  //       .lineTo(x, y + this.ROW_HEIGHT)
+  //       .stroke();
+
+  //     // Date d'expiration
+  //     const dateExp = ligne.produit?.validite_amm
+  //       ? new Date(ligne.produit.validite_amm).toLocaleDateString('fr-FR', {
+  //           day: '2-digit',
+  //           month: '2-digit',
+  //           year: '2-digit',
+  //         })
+  //       : 'N/A';
+  //     doc.text(dateExp, x + 5, y + 5, {
+  //       width: columnWidths[3] - 10,
+  //       align: 'center',
+  //     });
+  //     x += columnWidths[3];
+
+  //     // Bordure verticale après Expiration
+  //     doc
+  //       .moveTo(x, y)
+  //       .lineTo(x, y + this.ROW_HEIGHT)
+  //       .stroke();
+
+  //     // Montant total ligne
+  //     doc.text(Number(totalLigne).toFixed(2), x + 5, y + 5, {
+  //       width: columnWidths[4] - 10,
+  //       align: 'right',
+  //     });
+  //     x += columnWidths[4];
+
+  //     // Bordure verticale de fin
+  //     doc
+  //       .moveTo(x, y)
+  //       .lineTo(x, y + this.ROW_HEIGHT)
+  //       .stroke();
+
+  //     // Bordure horizontale sous la ligne
+  //     doc
+  //       .moveTo(tableLeft, y + this.ROW_HEIGHT)
+  //       .lineTo(
+  //         tableLeft + columnWidths.reduce((a, b) => a + b, 0),
+  //         y + this.ROW_HEIGHT,
+  //       )
+  //       .stroke();
+
+  //     y += this.ROW_HEIGHT;
+  //   });
+
+  //   // Résumé financier
+  //   const summaryTop = y + 20;
+  //   if (summaryTop > this.MAX_Y - 150) {
+  //     doc.addPage();
+  //     this.drawFinancialSummary(doc, 40, commande);
+  //   } else {
+  //     this.drawFinancialSummary(doc, summaryTop, commande);
+  //   }
+  // }
+
   private drawFullInvoice(doc: PDFDocument, commande: any): void {
     // Récupérer la position Y après l'en-tête
     const tableTop = this.drawHeader(doc, commande, 'full');
@@ -561,8 +704,8 @@ export class CommandeVenteService {
         .lineTo(x, y + this.ROW_HEIGHT)
         .stroke();
 
-      // Prix unitaire
-      doc.text(Number(ligne.prix_vente || 0).toFixed(2), x + 5, y + 5, {
+      // Prix unitaire (arrondi)
+      doc.text(Math.round(ligne.prix_vente || 0).toString(), x + 5, y + 5, {
         width: columnWidths[2] - 10,
         align: 'right',
       });
@@ -594,8 +737,8 @@ export class CommandeVenteService {
         .lineTo(x, y + this.ROW_HEIGHT)
         .stroke();
 
-      // Montant total ligne
-      doc.text(Number(totalLigne).toFixed(2), x + 5, y + 5, {
+      // Montant total ligne (arrondi)
+      doc.text(Math.round(totalLigne).toString(), x + 5, y + 5, {
         width: columnWidths[4] - 10,
         align: 'right',
       });
@@ -630,7 +773,9 @@ export class CommandeVenteService {
   }
 
   private formatCurrency(amount: number): string {
-    return amount.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+    return Math.round(amount)
+      .toString()
+      .replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
   }
 
   // private drawFullInvoice(doc: PDFDocument, commande: any): void {
@@ -743,6 +888,170 @@ export class CommandeVenteService {
   //   } else {
   //     this.drawFinancialSummary(doc, summaryTop, commande);
   //   }
+  // }
+
+  // private drawFinancialSummary(
+  //   doc: PDFDocument,
+  //   summaryTop: number,
+  //   commande: any,
+  // ): void {
+  //   // Calculs basés sur les données de la commande (corrigés selon ta logique)
+  //   const montantHT = commande.lignes.reduce(
+  //     (sum: number, ligne: any) => sum + ligne.prix_vente * ligne.quantite,
+  //     0,
+  //   );
+  //   const remise = Number(commande.remise || 0);
+  //   const montantNetHT = montantHT - remise;
+  //   const tva = Number(commande.tva || 0);
+  //   const isb = Number(commande.isb || 0);
+  //   const timbreFiscal = 200;
+  //   const totalTTC = montantNetHT + tva + isb + timbreFiscal;
+
+  //   // Titre
+  //   doc.fontSize(12).font('Helvetica-Bold');
+  //   doc.text('RÉSUMÉ FINANCIER', this.MARGINS, summaryTop);
+
+  //   // Ligne de séparation
+  //   doc
+  //     .moveTo(this.MARGINS, summaryTop + 15)
+  //     .lineTo(this.PAGE_WIDTH - this.MARGINS, summaryTop + 15)
+  //     .stroke();
+
+  //   let currentY = summaryTop + 25;
+  //   doc.fontSize(9).font('Helvetica');
+
+  //   // Montant HT initial
+  //   doc.text('Montant HT:', this.MARGINS, currentY);
+  //   doc.text(
+  //     `${montantHT.toFixed(2)} CFA`,
+  //     this.PAGE_WIDTH - this.MARGINS - 100,
+  //     currentY,
+  //     { align: 'right' },
+  //   );
+  //   currentY += 15;
+
+  //   // Remise (si > 0)
+  //   if (remise > 0) {
+  //     doc.text('Remise:', this.MARGINS, currentY);
+  //     doc.text(
+  //       `-${remise.toFixed(2)} CFA`,
+  //       this.PAGE_WIDTH - this.MARGINS - 100,
+  //       currentY,
+  //       { align: 'right' },
+  //     );
+  //     currentY += 15;
+
+  //     // Net HT après remise
+  //     doc.text('Net HT:', this.MARGINS, currentY);
+  //     doc.text(
+  //       `${montantNetHT.toFixed(2)} CFA`,
+  //       this.PAGE_WIDTH - this.MARGINS - 100,
+  //       currentY,
+  //       { align: 'right' },
+  //     );
+  //     currentY += 15;
+  //   }
+
+  //   // TVA (si > 0)
+  //   if (tva > 0) {
+  //     const tauxTVA =
+  //       montantNetHT > 0 ? ((tva / montantNetHT) * 100).toFixed(0) : '0';
+  //     doc.text(`TVA (${tauxTVA}%):`, this.MARGINS, currentY);
+  //     doc.text(
+  //       `${tva.toFixed(2)} CFA`,
+  //       this.PAGE_WIDTH - this.MARGINS - 100,
+  //       currentY,
+  //       { align: 'right' },
+  //     );
+  //     currentY += 15;
+  //   }
+
+  //   // ISB/Précompte
+  //   if (isb > 0) {
+  //     doc.text('ISB/Précompte (2%):', this.MARGINS, currentY);
+  //     doc.text(
+  //       `${isb.toFixed(2)} CFA`,
+  //       this.PAGE_WIDTH - this.MARGINS - 100,
+  //       currentY,
+  //       { align: 'right' },
+  //     );
+  //     currentY += 15;
+  //   }
+
+  //   // Timbre fiscal
+  //   doc.text('Timbre Fiscal:', this.MARGINS, currentY);
+  //   doc.text(
+  //     `${timbreFiscal.toFixed(2)} CFA`,
+  //     this.PAGE_WIDTH - this.MARGINS - 100,
+  //     currentY,
+  //     { align: 'right' },
+  //   );
+  //   currentY += 20;
+
+  //   // Ligne de séparation avant total
+  //   doc
+  //     .moveTo(this.MARGINS, currentY)
+  //     .lineTo(this.PAGE_WIDTH - this.MARGINS, currentY)
+  //     .stroke();
+  //   currentY += 10;
+
+  //   // Total TTC (en gras)
+  //   doc.fontSize(11).font('Helvetica-Bold');
+  //   doc.text('TOTAL TTC:', this.MARGINS, currentY);
+  //   doc.text(
+  //     `${totalTTC.toFixed(2)} CFA`,
+  //     this.PAGE_WIDTH - this.MARGINS - 100,
+  //     currentY,
+  //     { align: 'right' },
+  //   );
+  //   currentY += 25;
+
+  //   // Informations complémentaires
+  //   doc.fontSize(8).font('Helvetica');
+  //   doc.text(
+  //     `Moyen de paiement: ${sanitizeString(commande.type_reglement || 'E')}`,
+  //     this.MARGINS,
+  //     currentY,
+  //   );
+  //   currentY += 12;
+  //   doc.text(
+  //     `Nombre d'articles: ${commande.lignes.length}`,
+  //     this.MARGINS,
+  //     currentY,
+  //   );
+  //   currentY += 12;
+  //   doc.text('* Montants en francs CFA', this.MARGINS, currentY);
+  //   currentY += 20;
+
+  //   // Conversion en lettres
+  //   doc.fontSize(9).font('Helvetica-Bold');
+  //   doc.text(
+  //     'Arrêté la présente facture à la somme de :',
+  //     this.MARGINS,
+  //     currentY,
+  //   );
+  //   currentY += 15;
+  //   doc.fontSize(9).font('Helvetica');
+  //   doc.text(
+  //     `${numberToWordsFr(totalTTC)} francs CFA`,
+  //     this.MARGINS,
+  //     currentY,
+  //     {
+  //       width: this.PAGE_WIDTH - 2 * this.MARGINS,
+  //       align: 'center',
+  //     },
+  //   );
+  //   currentY += 25;
+
+  //   // Signature
+  //   doc.fontSize(9).font('Helvetica-Bold');
+  //   doc.text('Le Gestionnaire', this.MARGINS, currentY, { underline: true });
+
+  //   // Ligne finale
+  //   doc
+  //     .moveTo(this.MARGINS, currentY + 20)
+  //     .lineTo(this.PAGE_WIDTH - this.MARGINS, currentY + 20)
+  //     .stroke();
   // }
 
   private drawFinancialSummary(
@@ -913,169 +1222,6 @@ export class CommandeVenteService {
       .lineTo(this.PAGE_WIDTH - this.MARGINS, currentY + 20)
       .stroke();
   }
-  // private drawFinancialSummary(
-  //   doc: PDFDocument,
-  //   summaryTop: number,
-  //   commande: any,
-  // ): void {
-  //   // Calculs basés sur les données de la commande (corrigés selon ta logique)
-  //   const montantHT = commande.lignes.reduce(
-  //     (sum: number, ligne: any) => sum + ligne.prix_vente * ligne.quantite,
-  //     0,
-  //   );
-  //   const remise = Number(commande.remise || 0);
-  //   const montantNetHT = montantHT - remise;
-  //   const tva = Number(commande.tva || 0);
-  //   const isb = Number(commande.isb || 0);
-  //   const timbreFiscal = 200;
-  //   const totalTTC = montantNetHT + tva + isb + timbreFiscal;
-
-  //   // Titre
-  //   doc.fontSize(12).font('Helvetica-Bold');
-  //   doc.text('RÉSUMÉ FINANCIER', this.MARGINS, summaryTop);
-
-  //   // Ligne de séparation
-  //   doc
-  //     .moveTo(this.MARGINS, summaryTop + 15)
-  //     .lineTo(this.PAGE_WIDTH - this.MARGINS, summaryTop + 15)
-  //     .stroke();
-
-  //   let currentY = summaryTop + 25;
-  //   doc.fontSize(9).font('Helvetica');
-
-  //   // Montant HT initial
-  //   doc.text('Montant HT:', this.MARGINS, currentY);
-  //   doc.text(
-  //     `${montantHT.toFixed(2)} CFA`,
-  //     this.PAGE_WIDTH - this.MARGINS - 100,
-  //     currentY,
-  //     { align: 'right' },
-  //   );
-  //   currentY += 15;
-
-  //   // Remise (si > 0)
-  //   if (remise > 0) {
-  //     doc.text('Remise:', this.MARGINS, currentY);
-  //     doc.text(
-  //       `-${remise.toFixed(2)} CFA`,
-  //       this.PAGE_WIDTH - this.MARGINS - 100,
-  //       currentY,
-  //       { align: 'right' },
-  //     );
-  //     currentY += 15;
-
-  //     // Net HT après remise
-  //     doc.text('Net HT:', this.MARGINS, currentY);
-  //     doc.text(
-  //       `${montantNetHT.toFixed(2)} CFA`,
-  //       this.PAGE_WIDTH - this.MARGINS - 100,
-  //       currentY,
-  //       { align: 'right' },
-  //     );
-  //     currentY += 15;
-  //   }
-
-  //   // TVA (si > 0)
-  //   if (tva > 0) {
-  //     const tauxTVA =
-  //       montantNetHT > 0 ? ((tva / montantNetHT) * 100).toFixed(0) : '0';
-  //     doc.text(`TVA (${tauxTVA}%):`, this.MARGINS, currentY);
-  //     doc.text(
-  //       `${tva.toFixed(2)} CFA`,
-  //       this.PAGE_WIDTH - this.MARGINS - 100,
-  //       currentY,
-  //       { align: 'right' },
-  //     );
-  //     currentY += 15;
-  //   }
-
-  //   // ISB/Précompte
-  //   if (isb > 0) {
-  //     doc.text('ISB/Précompte (2%):', this.MARGINS, currentY);
-  //     doc.text(
-  //       `${isb.toFixed(2)} CFA`,
-  //       this.PAGE_WIDTH - this.MARGINS - 100,
-  //       currentY,
-  //       { align: 'right' },
-  //     );
-  //     currentY += 15;
-  //   }
-
-  //   // Timbre fiscal
-  //   doc.text('Timbre Fiscal:', this.MARGINS, currentY);
-  //   doc.text(
-  //     `${timbreFiscal.toFixed(2)} CFA`,
-  //     this.PAGE_WIDTH - this.MARGINS - 100,
-  //     currentY,
-  //     { align: 'right' },
-  //   );
-  //   currentY += 20;
-
-  //   // Ligne de séparation avant total
-  //   doc
-  //     .moveTo(this.MARGINS, currentY)
-  //     .lineTo(this.PAGE_WIDTH - this.MARGINS, currentY)
-  //     .stroke();
-  //   currentY += 10;
-
-  //   // Total TTC (en gras)
-  //   doc.fontSize(11).font('Helvetica-Bold');
-  //   doc.text('TOTAL TTC:', this.MARGINS, currentY);
-  //   doc.text(
-  //     `${totalTTC.toFixed(2)} CFA`,
-  //     this.PAGE_WIDTH - this.MARGINS - 100,
-  //     currentY,
-  //     { align: 'right' },
-  //   );
-  //   currentY += 25;
-
-  //   // Informations complémentaires
-  //   doc.fontSize(8).font('Helvetica');
-  //   doc.text(
-  //     `Moyen de paiement: ${sanitizeString(commande.type_reglement || 'E')}`,
-  //     this.MARGINS,
-  //     currentY,
-  //   );
-  //   currentY += 12;
-  //   doc.text(
-  //     `Nombre d'articles: ${commande.lignes.length}`,
-  //     this.MARGINS,
-  //     currentY,
-  //   );
-  //   currentY += 12;
-  //   doc.text('* Montants en francs CFA', this.MARGINS, currentY);
-  //   currentY += 20;
-
-  //   // Conversion en lettres
-  //   doc.fontSize(9).font('Helvetica-Bold');
-  //   doc.text(
-  //     'Arrêté la présente facture à la somme de :',
-  //     this.MARGINS,
-  //     currentY,
-  //   );
-  //   currentY += 15;
-  //   doc.fontSize(9).font('Helvetica');
-  //   doc.text(
-  //     `${numberToWordsFr(totalTTC)} francs CFA`,
-  //     this.MARGINS,
-  //     currentY,
-  //     {
-  //       width: this.PAGE_WIDTH - 2 * this.MARGINS,
-  //       align: 'center',
-  //     },
-  //   );
-  //   currentY += 25;
-
-  //   // Signature
-  //   doc.fontSize(9).font('Helvetica-Bold');
-  //   doc.text('Le Gestionnaire', this.MARGINS, currentY, { underline: true });
-
-  //   // Ligne finale
-  //   doc
-  //     .moveTo(this.MARGINS, currentY + 20)
-  //     .lineTo(this.PAGE_WIDTH - this.MARGINS, currentY + 20)
-  //     .stroke();
-  // }
   private drawSimpleInvoice(doc: PDFDocument, commande: any): void {
     const tableTop = 110;
     const tableLeft = 50;
@@ -1512,6 +1658,33 @@ export class CommandeVenteService {
       .lineTo(tableLeft + totalWidth, tableTop + headerHeight)
       .stroke();
   }
+  //methode qui calcule l'isb sur le montant ht + timbre
+  // private calculateFinancials(commande: any) {
+  //   const montantInitial = commande.lignes.reduce(
+  //     (sum: number, ligne: any) => sum + ligne.prix_vente * ligne.quantite,
+  //     0,
+  //   );
+  //   const remise = commande.remise || 0;
+  //   const montantApresRemise = montantInitial - remise;
+  //   const tva = commande.tva || 0;
+  //   const timbreFiscal = 200;
+
+  //   // Calcul du précompte sur (montantApresRemise + timbreFiscal)
+  //   const baseCalculIsb = montantApresRemise + timbreFiscal;
+  //   const precompte = baseCalculIsb * 0.02;
+
+  //   const totalTTC = montantApresRemise + tva + precompte + timbreFiscal;
+
+  //   return {
+  //     montantInitial: Number(montantInitial.toFixed(2)),
+  //     remise: Number(remise.toFixed(2)),
+  //     montantApresRemise: Number(montantApresRemise.toFixed(2)),
+  //     tva: Number(tva.toFixed(2)),
+  //     precompte: Number(precompte.toFixed(2)),
+  //     timbreFiscal: Number(timbreFiscal.toFixed(2)),
+  //     totalTTC: Number(totalTTC.toFixed(2)),
+  //   };
+  // }
 
   private calculateFinancials(commande: any) {
     const montantInitial = commande.lignes.reduce(
@@ -1530,13 +1703,13 @@ export class CommandeVenteService {
     const totalTTC = montantApresRemise + tva + precompte + timbreFiscal;
 
     return {
-      montantInitial: Number(montantInitial.toFixed(2)),
-      remise: Number(remise.toFixed(2)),
-      montantApresRemise: Number(montantApresRemise.toFixed(2)),
-      tva: Number(tva.toFixed(2)),
-      precompte: Number(precompte.toFixed(2)),
-      timbreFiscal: Number(timbreFiscal.toFixed(2)),
-      totalTTC: Number(totalTTC.toFixed(2)),
+      montantInitial: Math.round(montantInitial),
+      remise: Math.round(remise),
+      montantApresRemise: Math.round(montantApresRemise),
+      tva: Math.round(tva),
+      precompte: Math.round(precompte),
+      timbreFiscal: Math.round(timbreFiscal),
+      totalTTC: Math.round(totalTTC),
     };
   }
 
