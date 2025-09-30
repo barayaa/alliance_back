@@ -50,6 +50,33 @@ class DateRangeDto {
 export class CommandeVenteController {
   constructor(private readonly commandeVenteService: CommandeVenteService) {}
 
+  // Exporter toutes les factures annulées dans un seul PDF
+  @Auth(AuthType.None)
+  @Get('export/cancelled')
+  async exportCancelledInvoices(
+    @Res() res: Response,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('idClient') idClient?: number,
+  ) {
+    return this.commandeVenteService.exportCancelledInvoices(
+      res,
+      startDate,
+      endDate,
+      idClient,
+    );
+  }
+
+  @Auth(AuthType.None)
+  @Get(':id/pdf/cancelled/:type')
+  async generateCancelledPdf(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('type') type: 'full' | 'simple' | 'bl' | 'bp',
+    @Res() res: Response,
+  ) {
+    return this.commandeVenteService.generateCancelledPdf(id, res, type);
+  }
+
   @Auth(AuthType.None)
   @Get('unpaid-invoices/pdf')
   @Get('findtout')

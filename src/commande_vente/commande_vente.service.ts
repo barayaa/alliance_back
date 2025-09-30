@@ -490,34 +490,31 @@ export class CommandeVenteService {
     // Récupérer la position Y après l'en-tête
     const tableTop = this.drawHeader(doc, commande, 'full');
     const tableLeft = this.MARGINS;
-    const columnWidths = [200, 60, 70, 60, 80, 70]; // Ajusté pour éviter débordement
+    const columnWidths = [220, 70, 80, 90, 80]; // 5 colonnes au lieu de 6
 
     // En-tête du tableau
     this.drawTableHeader(doc, tableTop, tableLeft, columnWidths, [
       'Désignation',
       'Qté',
       'P.U.',
-      'Remise',
       'Expiration',
       'Montant',
     ]);
 
     // Lignes du tableau
-    let y = tableTop + 25; // Espace après l'en-tête du tableau
+    let y = tableTop + 25;
     let subtotal = 0;
 
-    doc.fontSize(8).font('Helvetica'); // Taille plus petite pour éviter débordement
+    doc.fontSize(8).font('Helvetica');
 
-    commande.lignes.forEach((ligne: any) => {
+    commande.lignes.forEach((ligne: any, index: number) => {
       if (y + this.ROW_HEIGHT > this.MAX_Y - 100) {
-        // Garder 100px pour le résumé
         doc.addPage();
         const newTableTop = this.drawHeader(doc, commande, 'full');
         this.drawTableHeader(doc, newTableTop, tableLeft, columnWidths, [
           'Désignation',
           'Qté',
           'P.U.',
-          'Remise',
           'Expiration',
           'Montant',
         ]);
@@ -528,38 +525,56 @@ export class CommandeVenteService {
       subtotal += totalLigne;
 
       let x = tableLeft;
-      // Désignation (tronquée si trop longue)
+
+      // Bordures verticales de début
+      doc
+        .moveTo(tableLeft, y)
+        .lineTo(tableLeft, y + this.ROW_HEIGHT)
+        .stroke();
+
+      // Désignation
       const designation = sanitizeString(
         ligne.produit?.produit || ligne.designation?.toString() || 'N/A',
       );
-      doc.text(designation.substring(0, 35), x, y, {
-        width: columnWidths[0],
+      doc.text(designation.substring(0, 35), x + 5, y + 5, {
+        width: columnWidths[0] - 10,
         align: 'left',
       });
       x += columnWidths[0];
 
+      // Bordure verticale après Désignation
+      doc
+        .moveTo(x, y)
+        .lineTo(x, y + this.ROW_HEIGHT)
+        .stroke();
+
       // Quantité
-      doc.text(ligne.quantite.toString(), x, y, {
-        width: columnWidths[1],
+      doc.text(ligne.quantite.toString(), x + 5, y + 5, {
+        width: columnWidths[1] - 10,
         align: 'center',
       });
       x += columnWidths[1];
 
+      // Bordure verticale après Quantité
+      doc
+        .moveTo(x, y)
+        .lineTo(x, y + this.ROW_HEIGHT)
+        .stroke();
+
       // Prix unitaire
-      doc.text(Number(ligne.prix_vente || 0).toFixed(2), x, y, {
-        width: columnWidths[2],
+      doc.text(Number(ligne.prix_vente || 0).toFixed(2), x + 5, y + 5, {
+        width: columnWidths[2] - 10,
         align: 'right',
       });
       x += columnWidths[2];
 
-      // Remise
-      doc.text(Number(ligne.remise || 0).toFixed(2), x, y, {
-        width: columnWidths[3],
-        align: 'right',
-      });
-      x += columnWidths[3];
+      // Bordure verticale après P.U.
+      doc
+        .moveTo(x, y)
+        .lineTo(x, y + this.ROW_HEIGHT)
+        .stroke();
 
-      // Date d'expiration (format court)
+      // Date d'expiration
       const dateExp = ligne.produit?.validite_amm
         ? new Date(ligne.produit.validite_amm).toLocaleDateString('fr-FR', {
             day: '2-digit',
@@ -567,28 +582,44 @@ export class CommandeVenteService {
             year: '2-digit',
           })
         : 'N/A';
-      doc.text(dateExp, x, y, {
-        width: columnWidths[4],
+      doc.text(dateExp, x + 5, y + 5, {
+        width: columnWidths[3] - 10,
         align: 'center',
+      });
+      x += columnWidths[3];
+
+      // Bordure verticale après Expiration
+      doc
+        .moveTo(x, y)
+        .lineTo(x, y + this.ROW_HEIGHT)
+        .stroke();
+
+      // Montant total ligne
+      doc.text(Number(totalLigne).toFixed(2), x + 5, y + 5, {
+        width: columnWidths[4] - 10,
+        align: 'right',
       });
       x += columnWidths[4];
 
-      // Montant total ligne
-      doc.text(Number(totalLigne).toFixed(2), x, y, {
-        width: columnWidths[5],
-        align: 'right',
-      });
+      // Bordure verticale de fin
+      doc
+        .moveTo(x, y)
+        .lineTo(x, y + this.ROW_HEIGHT)
+        .stroke();
+
+      // Bordure horizontale sous la ligne
+      doc
+        .moveTo(tableLeft, y + this.ROW_HEIGHT)
+        .lineTo(
+          tableLeft + columnWidths.reduce((a, b) => a + b, 0),
+          y + this.ROW_HEIGHT,
+        )
+        .stroke();
 
       y += this.ROW_HEIGHT;
     });
 
-    // Ligne de fermeture du tableau
-    doc
-      .moveTo(tableLeft, y)
-      .lineTo(tableLeft + columnWidths.reduce((a, b) => a + b, 0), y)
-      .stroke();
-
-    // Résumé financier - avec espace approprié
+    // Résumé financier
     const summaryTop = y + 20;
     if (summaryTop > this.MAX_Y - 150) {
       doc.addPage();
@@ -598,21 +629,137 @@ export class CommandeVenteService {
     }
   }
 
+  private formatCurrency(amount: number): string {
+    return amount.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  }
+
+  // private drawFullInvoice(doc: PDFDocument, commande: any): void {
+  //   // Récupérer la position Y après l'en-tête
+  //   const tableTop = this.drawHeader(doc, commande, 'full');
+  //   const tableLeft = this.MARGINS;
+  //   const columnWidths = [200, 60, 70, 60, 80, 70]; // Ajusté pour éviter débordement
+
+  //   // En-tête du tableau
+  //   this.drawTableHeader(doc, tableTop, tableLeft, columnWidths, [
+  //     'Désignation',
+  //     'Qté',
+  //     'P.U.',
+  //     'Remise',
+  //     'Expiration',
+  //     'Montant',
+  //   ]);
+
+  //   // Lignes du tableau
+  //   let y = tableTop + 25; // Espace après l'en-tête du tableau
+  //   let subtotal = 0;
+
+  //   doc.fontSize(8).font('Helvetica'); // Taille plus petite pour éviter débordement
+
+  //   commande.lignes.forEach((ligne: any) => {
+  //     if (y + this.ROW_HEIGHT > this.MAX_Y - 100) {
+  //       // Garder 100px pour le résumé
+  //       doc.addPage();
+  //       const newTableTop = this.drawHeader(doc, commande, 'full');
+  //       this.drawTableHeader(doc, newTableTop, tableLeft, columnWidths, [
+  //         'Désignation',
+  //         'Qté',
+  //         'P.U.',
+  //         'Remise',
+  //         'Expiration',
+  //         'Montant',
+  //       ]);
+  //       y = newTableTop + 25;
+  //     }
+
+  //     const totalLigne = ligne.prix_vente * ligne.quantite;
+  //     subtotal += totalLigne;
+
+  //     let x = tableLeft;
+  //     // Désignation (tronquée si trop longue)
+  //     const designation = sanitizeString(
+  //       ligne.produit?.produit || ligne.designation?.toString() || 'N/A',
+  //     );
+  //     doc.text(designation.substring(0, 35), x, y, {
+  //       width: columnWidths[0],
+  //       align: 'left',
+  //     });
+  //     x += columnWidths[0];
+
+  //     // Quantité
+  //     doc.text(ligne.quantite.toString(), x, y, {
+  //       width: columnWidths[1],
+  //       align: 'center',
+  //     });
+  //     x += columnWidths[1];
+
+  //     // Prix unitaire
+  //     doc.text(Number(ligne.prix_vente || 0).toFixed(2), x, y, {
+  //       width: columnWidths[2],
+  //       align: 'right',
+  //     });
+  //     x += columnWidths[2];
+
+  //     // Remise
+  //     doc.text(Number(ligne.remise || 0).toFixed(2), x, y, {
+  //       width: columnWidths[3],
+  //       align: 'right',
+  //     });
+  //     x += columnWidths[3];
+
+  //     // Date d'expiration (format court)
+  //     const dateExp = ligne.produit?.validite_amm
+  //       ? new Date(ligne.produit.validite_amm).toLocaleDateString('fr-FR', {
+  //           day: '2-digit',
+  //           month: '2-digit',
+  //           year: '2-digit',
+  //         })
+  //       : 'N/A';
+  //     doc.text(dateExp, x, y, {
+  //       width: columnWidths[4],
+  //       align: 'center',
+  //     });
+  //     x += columnWidths[4];
+
+  //     // Montant total ligne
+  //     doc.text(Number(totalLigne).toFixed(2), x, y, {
+  //       width: columnWidths[5],
+  //       align: 'right',
+  //     });
+
+  //     y += this.ROW_HEIGHT;
+  //   });
+
+  //   // Ligne de fermeture du tableau
+  //   doc
+  //     .moveTo(tableLeft, y)
+  //     .lineTo(tableLeft + columnWidths.reduce((a, b) => a + b, 0), y)
+  //     .stroke();
+
+  //   // Résumé financier - avec espace approprié
+  //   const summaryTop = y + 20;
+  //   if (summaryTop > this.MAX_Y - 150) {
+  //     doc.addPage();
+  //     this.drawFinancialSummary(doc, 40, commande);
+  //   } else {
+  //     this.drawFinancialSummary(doc, summaryTop, commande);
+  //   }
+  // }
+
   private drawFinancialSummary(
     doc: PDFDocument,
     summaryTop: number,
     commande: any,
   ): void {
-    // Calculs basés sur les données de la commande (corrigés selon ta logique)
+    // Calculs basés sur les données de la commande
     const montantHT = commande.lignes.reduce(
       (sum: number, ligne: any) => sum + ligne.prix_vente * ligne.quantite,
       0,
     );
     const remise = Number(commande.remise || 0);
     const montantNetHT = montantHT - remise;
+    const timbreFiscal = 200;
     const tva = Number(commande.tva || 0);
     const isb = Number(commande.isb || 0);
-    const timbreFiscal = 200;
     const totalTTC = montantNetHT + tva + isb + timbreFiscal;
 
     // Titre
@@ -631,7 +778,17 @@ export class CommandeVenteService {
     // Montant HT initial
     doc.text('Montant HT:', this.MARGINS, currentY);
     doc.text(
-      `${montantHT.toFixed(2)} CFA`,
+      `${this.formatCurrency(montantHT)} CFA`,
+      this.PAGE_WIDTH - this.MARGINS - 100,
+      currentY,
+      { align: 'right' },
+    );
+    currentY += 15;
+
+    // Timbre fiscal
+    doc.text('Timbre Fiscal:', this.MARGINS, currentY);
+    doc.text(
+      `${this.formatCurrency(timbreFiscal)} CFA`,
       this.PAGE_WIDTH - this.MARGINS - 100,
       currentY,
       { align: 'right' },
@@ -642,7 +799,7 @@ export class CommandeVenteService {
     if (remise > 0) {
       doc.text('Remise:', this.MARGINS, currentY);
       doc.text(
-        `-${remise.toFixed(2)} CFA`,
+        `-${this.formatCurrency(remise)} CFA`,
         this.PAGE_WIDTH - this.MARGINS - 100,
         currentY,
         { align: 'right' },
@@ -652,7 +809,22 @@ export class CommandeVenteService {
       // Net HT après remise
       doc.text('Net HT:', this.MARGINS, currentY);
       doc.text(
-        `${montantNetHT.toFixed(2)} CFA`,
+        `${this.formatCurrency(montantNetHT)} CFA`,
+        this.PAGE_WIDTH - this.MARGINS - 100,
+        currentY,
+        { align: 'right' },
+      );
+      currentY += 15;
+    }
+
+    // ISB/Précompte
+    if (isb > 0) {
+      const baseCalculIsb = montantNetHT + timbreFiscal;
+      const tauxISB =
+        baseCalculIsb > 0 ? ((isb / baseCalculIsb) * 100).toFixed(0) : '0';
+      doc.text(`ISB/Précompte (${tauxISB}%):`, this.MARGINS, currentY);
+      doc.text(
+        `${this.formatCurrency(isb)} CFA`,
         this.PAGE_WIDTH - this.MARGINS - 100,
         currentY,
         { align: 'right' },
@@ -666,7 +838,7 @@ export class CommandeVenteService {
         montantNetHT > 0 ? ((tva / montantNetHT) * 100).toFixed(0) : '0';
       doc.text(`TVA (${tauxTVA}%):`, this.MARGINS, currentY);
       doc.text(
-        `${tva.toFixed(2)} CFA`,
+        `${this.formatCurrency(tva)} CFA`,
         this.PAGE_WIDTH - this.MARGINS - 100,
         currentY,
         { align: 'right' },
@@ -674,27 +846,7 @@ export class CommandeVenteService {
       currentY += 15;
     }
 
-    // ISB/Précompte
-    if (isb > 0) {
-      doc.text('ISB/Précompte (2%):', this.MARGINS, currentY);
-      doc.text(
-        `${isb.toFixed(2)} CFA`,
-        this.PAGE_WIDTH - this.MARGINS - 100,
-        currentY,
-        { align: 'right' },
-      );
-      currentY += 15;
-    }
-
-    // Timbre fiscal
-    doc.text('Timbre Fiscal:', this.MARGINS, currentY);
-    doc.text(
-      `${timbreFiscal.toFixed(2)} CFA`,
-      this.PAGE_WIDTH - this.MARGINS - 100,
-      currentY,
-      { align: 'right' },
-    );
-    currentY += 20;
+    currentY += 5;
 
     // Ligne de séparation avant total
     doc
@@ -707,7 +859,7 @@ export class CommandeVenteService {
     doc.fontSize(11).font('Helvetica-Bold');
     doc.text('TOTAL TTC:', this.MARGINS, currentY);
     doc.text(
-      `${totalTTC.toFixed(2)} CFA`,
+      `${this.formatCurrency(totalTTC)} CFA`,
       this.PAGE_WIDTH - this.MARGINS - 100,
       currentY,
       { align: 'right' },
@@ -715,12 +867,12 @@ export class CommandeVenteService {
     currentY += 25;
 
     // Informations complémentaires
-    doc.fontSize(8).font('Helvetica');
-    doc.text(
-      `Moyen de paiement: ${sanitizeString(commande.type_reglement || 'E')}`,
-      this.MARGINS,
-      currentY,
-    );
+    // doc.fontSize(8).font('Helvetica');
+    // doc.text(
+    //   `Moyen de paiement: ${sanitizeString(commande.type_reglement || 'E')}`,
+    //   this.MARGINS,
+    //   currentY,
+    // );
     currentY += 12;
     doc.text(
       `Nombre d'articles: ${commande.lignes.length}`,
@@ -741,7 +893,7 @@ export class CommandeVenteService {
     currentY += 15;
     doc.fontSize(9).font('Helvetica');
     doc.text(
-      `${numberToWordsFr(totalTTC)} francs CFA`,
+      `${numberToWordsFr(Math.round(totalTTC))} francs CFA`,
       this.MARGINS,
       currentY,
       {
@@ -761,6 +913,169 @@ export class CommandeVenteService {
       .lineTo(this.PAGE_WIDTH - this.MARGINS, currentY + 20)
       .stroke();
   }
+  // private drawFinancialSummary(
+  //   doc: PDFDocument,
+  //   summaryTop: number,
+  //   commande: any,
+  // ): void {
+  //   // Calculs basés sur les données de la commande (corrigés selon ta logique)
+  //   const montantHT = commande.lignes.reduce(
+  //     (sum: number, ligne: any) => sum + ligne.prix_vente * ligne.quantite,
+  //     0,
+  //   );
+  //   const remise = Number(commande.remise || 0);
+  //   const montantNetHT = montantHT - remise;
+  //   const tva = Number(commande.tva || 0);
+  //   const isb = Number(commande.isb || 0);
+  //   const timbreFiscal = 200;
+  //   const totalTTC = montantNetHT + tva + isb + timbreFiscal;
+
+  //   // Titre
+  //   doc.fontSize(12).font('Helvetica-Bold');
+  //   doc.text('RÉSUMÉ FINANCIER', this.MARGINS, summaryTop);
+
+  //   // Ligne de séparation
+  //   doc
+  //     .moveTo(this.MARGINS, summaryTop + 15)
+  //     .lineTo(this.PAGE_WIDTH - this.MARGINS, summaryTop + 15)
+  //     .stroke();
+
+  //   let currentY = summaryTop + 25;
+  //   doc.fontSize(9).font('Helvetica');
+
+  //   // Montant HT initial
+  //   doc.text('Montant HT:', this.MARGINS, currentY);
+  //   doc.text(
+  //     `${montantHT.toFixed(2)} CFA`,
+  //     this.PAGE_WIDTH - this.MARGINS - 100,
+  //     currentY,
+  //     { align: 'right' },
+  //   );
+  //   currentY += 15;
+
+  //   // Remise (si > 0)
+  //   if (remise > 0) {
+  //     doc.text('Remise:', this.MARGINS, currentY);
+  //     doc.text(
+  //       `-${remise.toFixed(2)} CFA`,
+  //       this.PAGE_WIDTH - this.MARGINS - 100,
+  //       currentY,
+  //       { align: 'right' },
+  //     );
+  //     currentY += 15;
+
+  //     // Net HT après remise
+  //     doc.text('Net HT:', this.MARGINS, currentY);
+  //     doc.text(
+  //       `${montantNetHT.toFixed(2)} CFA`,
+  //       this.PAGE_WIDTH - this.MARGINS - 100,
+  //       currentY,
+  //       { align: 'right' },
+  //     );
+  //     currentY += 15;
+  //   }
+
+  //   // TVA (si > 0)
+  //   if (tva > 0) {
+  //     const tauxTVA =
+  //       montantNetHT > 0 ? ((tva / montantNetHT) * 100).toFixed(0) : '0';
+  //     doc.text(`TVA (${tauxTVA}%):`, this.MARGINS, currentY);
+  //     doc.text(
+  //       `${tva.toFixed(2)} CFA`,
+  //       this.PAGE_WIDTH - this.MARGINS - 100,
+  //       currentY,
+  //       { align: 'right' },
+  //     );
+  //     currentY += 15;
+  //   }
+
+  //   // ISB/Précompte
+  //   if (isb > 0) {
+  //     doc.text('ISB/Précompte (2%):', this.MARGINS, currentY);
+  //     doc.text(
+  //       `${isb.toFixed(2)} CFA`,
+  //       this.PAGE_WIDTH - this.MARGINS - 100,
+  //       currentY,
+  //       { align: 'right' },
+  //     );
+  //     currentY += 15;
+  //   }
+
+  //   // Timbre fiscal
+  //   doc.text('Timbre Fiscal:', this.MARGINS, currentY);
+  //   doc.text(
+  //     `${timbreFiscal.toFixed(2)} CFA`,
+  //     this.PAGE_WIDTH - this.MARGINS - 100,
+  //     currentY,
+  //     { align: 'right' },
+  //   );
+  //   currentY += 20;
+
+  //   // Ligne de séparation avant total
+  //   doc
+  //     .moveTo(this.MARGINS, currentY)
+  //     .lineTo(this.PAGE_WIDTH - this.MARGINS, currentY)
+  //     .stroke();
+  //   currentY += 10;
+
+  //   // Total TTC (en gras)
+  //   doc.fontSize(11).font('Helvetica-Bold');
+  //   doc.text('TOTAL TTC:', this.MARGINS, currentY);
+  //   doc.text(
+  //     `${totalTTC.toFixed(2)} CFA`,
+  //     this.PAGE_WIDTH - this.MARGINS - 100,
+  //     currentY,
+  //     { align: 'right' },
+  //   );
+  //   currentY += 25;
+
+  //   // Informations complémentaires
+  //   doc.fontSize(8).font('Helvetica');
+  //   doc.text(
+  //     `Moyen de paiement: ${sanitizeString(commande.type_reglement || 'E')}`,
+  //     this.MARGINS,
+  //     currentY,
+  //   );
+  //   currentY += 12;
+  //   doc.text(
+  //     `Nombre d'articles: ${commande.lignes.length}`,
+  //     this.MARGINS,
+  //     currentY,
+  //   );
+  //   currentY += 12;
+  //   doc.text('* Montants en francs CFA', this.MARGINS, currentY);
+  //   currentY += 20;
+
+  //   // Conversion en lettres
+  //   doc.fontSize(9).font('Helvetica-Bold');
+  //   doc.text(
+  //     'Arrêté la présente facture à la somme de :',
+  //     this.MARGINS,
+  //     currentY,
+  //   );
+  //   currentY += 15;
+  //   doc.fontSize(9).font('Helvetica');
+  //   doc.text(
+  //     `${numberToWordsFr(totalTTC)} francs CFA`,
+  //     this.MARGINS,
+  //     currentY,
+  //     {
+  //       width: this.PAGE_WIDTH - 2 * this.MARGINS,
+  //       align: 'center',
+  //     },
+  //   );
+  //   currentY += 25;
+
+  //   // Signature
+  //   doc.fontSize(9).font('Helvetica-Bold');
+  //   doc.text('Le Gestionnaire', this.MARGINS, currentY, { underline: true });
+
+  //   // Ligne finale
+  //   doc
+  //     .moveTo(this.MARGINS, currentY + 20)
+  //     .lineTo(this.PAGE_WIDTH - this.MARGINS, currentY + 20)
+  //     .stroke();
+  // }
   private drawSimpleInvoice(doc: PDFDocument, commande: any): void {
     const tableTop = 110;
     const tableLeft = 50;
@@ -1122,82 +1437,29 @@ export class CommandeVenteService {
       .lineTo(this.MARGINS + 200, currentY)
       .stroke();
   }
-  // private drawPreparationNote(doc: PDFDocument, commande: any): void {
-  //   const tableTop = 160;
-  //   const tableLeft = this.MARGINS;
-  //   const columnWidths = [250, 80, 120, 100];
 
-  //   // En-tête du tableau
-  //   this.drawTableHeader(doc, tableTop, tableLeft, columnWidths, [
-  //     'Désignation',
-  //     'Quantité',
-  //     'Date d’expiration',
-  //     'Emplacement',
-  //   ]);
-
-  //   // Lignes
-  //   let y = tableTop + 30;
-  //   commande.lignes.forEach((ligne: any) => {
-  //     if (y + this.ROW_HEIGHT > this.MAX_Y) {
-  //       doc.addPage();
-  //       y = 40;
-  //       this.drawTableHeader(doc, y, tableLeft, columnWidths, [
-  //         'Désignation',
-  //         'Quantité',
-  //         'Date d’expiration',
-  //         'Emplacement',
-  //       ]);
-  //       y += 30;
-  //     }
-
-  //     let x = tableLeft;
-  //     doc.text(
-  //       sanitizeString(
-  //         ligne.produit?.produit || ligne.designation?.toString() || 'N/A',
-  //       ),
-  //       x,
-  //       y,
-  //       { width: columnWidths[0], align: 'left' },
-  //     );
-  //     x += columnWidths[0];
-  //     doc.text(ligne.quantite.toString(), x, y, {
-  //       width: columnWidths[1],
+  // private drawTableHeader(
+  //   doc: PDFDocument,
+  //   tableTop: number,
+  //   tableLeft: number,
+  //   columnWidths: number[],
+  //   headers: string[],
+  // ): void {
+  //   doc.fontSize(8).font('Helvetica-Bold');
+  //   let x = tableLeft;
+  //   headers.forEach((header, i) => {
+  //     doc.text(header, x, tableTop, {
+  //       width: columnWidths[i],
   //       align: 'center',
   //     });
-  //     x += columnWidths[1];
-  //     doc.text(formatDate(ligne.produit?.validite_amm), x, y, {
-  //       width: columnWidths[2],
-  //       align: 'center',
-  //     });
-  //     x += columnWidths[2];
-  //     doc.text(sanitizeString(ligne.produit?.emplacement || 'N/A'), x, y, {
-  //       width: columnWidths[3],
-  //       align: 'center',
-  //     });
-  //     y += this.ROW_HEIGHT;
-  //   });
-
-  //   doc
-  //     .moveTo(tableLeft, y)
-  //     .lineTo(tableLeft + columnWidths.reduce((a, b) => a + b, 0), y)
-  //     .stroke();
-
-  //   // Résumé
-  //   const summaryTop = y + 20 > this.MAX_Y ? (doc.addPage(), 40) : y + 20;
-  //   doc.fontSize(10).font('Helvetica-Bold');
-  //   doc.text('Résumé', this.MARGINS, summaryTop);
-  //   doc.fontSize(8).font('Helvetica');
-  //   doc.text(
-  //     `Nombre d'articles: ${commande.lignes.length}`,
-  //     this.MARGINS,
-  //     summaryTop + 15,
-  //   );
-  //   doc.text('Le Gestionnaire', this.MARGINS, summaryTop + 30, {
-  //     underline: true,
+  //     x += columnWidths[i];
   //   });
   //   doc
-  //     .moveTo(this.MARGINS, summaryTop + 50)
-  //     .lineTo(this.PAGE_WIDTH - this.MARGINS, summaryTop + 50)
+  //     .moveTo(tableLeft, tableTop + 20)
+  //     .lineTo(
+  //       tableLeft + columnWidths.reduce((a, b) => a + b, 0),
+  //       tableTop + 20,
+  //     )
   //     .stroke();
   // }
 
@@ -1209,20 +1471,45 @@ export class CommandeVenteService {
     headers: string[],
   ): void {
     doc.fontSize(8).font('Helvetica-Bold');
+
+    const totalWidth = columnWidths.reduce((a, b) => a + b, 0);
+    const headerHeight = 20;
+
+    // Rectangle de fond pour l'en-tête (optionnel - pour un fond grisé)
+    doc
+      .rect(tableLeft, tableTop, totalWidth, headerHeight)
+      .fillAndStroke('#f0f0f0', 'black');
+
+    // Remettre la couleur de texte en noir
+    doc.fillColor('black');
+
     let x = tableLeft;
     headers.forEach((header, i) => {
-      doc.text(header, x, tableTop, {
-        width: columnWidths[i],
+      // Bordure verticale avant chaque colonne
+      doc
+        .moveTo(x, tableTop)
+        .lineTo(x, tableTop + headerHeight)
+        .stroke();
+
+      // Texte de l'en-tête
+      doc.text(header, x + 5, tableTop + 5, {
+        width: columnWidths[i] - 10,
         align: 'center',
       });
+
       x += columnWidths[i];
     });
+
+    // Bordure verticale de fin
     doc
-      .moveTo(tableLeft, tableTop + 20)
-      .lineTo(
-        tableLeft + columnWidths.reduce((a, b) => a + b, 0),
-        tableTop + 20,
-      )
+      .moveTo(x, tableTop)
+      .lineTo(x, tableTop + headerHeight)
+      .stroke();
+
+    // Bordure horizontale du bas de l'en-tête
+    doc
+      .moveTo(tableLeft, tableTop + headerHeight)
+      .lineTo(tableLeft + totalWidth, tableTop + headerHeight)
       .stroke();
   }
 
@@ -1234,8 +1521,12 @@ export class CommandeVenteService {
     const remise = commande.remise || 0;
     const montantApresRemise = montantInitial - remise;
     const tva = commande.tva || 0;
-    const precompte = montantInitial * 0.02;
     const timbreFiscal = 200;
+
+    // Calcul du précompte sur (montantApresRemise + timbreFiscal)
+    const baseCalculIsb = montantApresRemise + timbreFiscal;
+    const precompte = baseCalculIsb * 0.02;
+
     const totalTTC = montantApresRemise + tva + precompte + timbreFiscal;
 
     return {
@@ -1247,6 +1538,61 @@ export class CommandeVenteService {
       timbreFiscal: Number(timbreFiscal.toFixed(2)),
       totalTTC: Number(totalTTC.toFixed(2)),
     };
+  }
+
+  //methode qui calcule l'isb sur le montant ht
+  // private calculateFinancials(commande: any) {
+  //   const montantInitial = commande.lignes.reduce(
+  //     (sum: number, ligne: any) => sum + ligne.prix_vente * ligne.quantite,
+  //     0,
+  //   );
+  //   const remise = commande.remise || 0;
+  //   const montantApresRemise = montantInitial - remise;
+  //   const tva = commande.tva || 0;
+  //   const precompte = montantInitial * 0.02;
+  //   const timbreFiscal = 200;
+  //   const totalTTC = montantApresRemise + tva + precompte + timbreFiscal;
+
+  //   return {
+  //     montantInitial: Number(montantInitial.toFixed(2)),
+  //     remise: Number(remise.toFixed(2)),
+  //     montantApresRemise: Number(montantApresRemise.toFixed(2)),
+  //     tva: Number(tva.toFixed(2)),
+  //     precompte: Number(precompte.toFixed(2)),
+  //     timbreFiscal: Number(timbreFiscal.toFixed(2)),
+  //     totalTTC: Number(totalTTC.toFixed(2)),
+  //   };
+  // }
+
+  private drawSimpleSummary(
+    doc: PDFDocument,
+    summaryTop: number,
+    financials: any,
+  ): void {
+    let y = summaryTop;
+    doc.fontSize(9).font('Helvetica');
+    doc.text(`Montant HT: ${financials.montantInitial} CFA`, 350, y, {
+      align: 'right',
+    });
+    if (financials.remise > 0) {
+      y += 15;
+      doc.text(`Remise: ${financials.remise} CFA`, 350, y, { align: 'right' });
+    }
+    y += 15;
+    doc.text(`TVA: ${financials.tva} CFA`, 350, y, { align: 'right' });
+    y += 15;
+    doc.text(`Précompte: ${financials.precompte} CFA`, 350, y, {
+      align: 'right',
+    });
+    y += 15;
+    doc.text(`Timbre: ${financials.timbreFiscal} CFA`, 350, y, {
+      align: 'right',
+    });
+    y += 20;
+    doc.fontSize(10).font('Helvetica-Bold');
+    doc.text(`TOTAL TTC: ${financials.totalTTC} CFA`, 350, y, {
+      align: 'right',
+    });
   }
 
   private drawSummary(
@@ -1328,94 +1674,6 @@ export class CommandeVenteService {
       .lineTo(this.PAGE_WIDTH - this.MARGINS, summaryTop + 190)
       .stroke();
   }
-
-  private drawSimpleSummary(
-    doc: PDFDocument,
-    summaryTop: number,
-    financials: any,
-  ): void {
-    let y = summaryTop;
-    doc.fontSize(9).font('Helvetica');
-    doc.text(`Montant HT: ${financials.montantInitial} CFA`, 350, y, {
-      align: 'right',
-    });
-    if (financials.remise > 0) {
-      y += 15;
-      doc.text(`Remise: ${financials.remise} CFA`, 350, y, { align: 'right' });
-    }
-    y += 15;
-    doc.text(`TVA: ${financials.tva} CFA`, 350, y, { align: 'right' });
-    y += 15;
-    doc.text(`Précompte: ${financials.precompte} CFA`, 350, y, {
-      align: 'right',
-    });
-    y += 15;
-    doc.text(`Timbre: ${financials.timbreFiscal} CFA`, 350, y, {
-      align: 'right',
-    });
-    y += 20;
-    doc.fontSize(10).font('Helvetica-Bold');
-    doc.text(`TOTAL TTC: ${financials.totalTTC} CFA`, 350, y, {
-      align: 'right',
-    });
-  }
-
-  // async findAll(
-  //   startDate?: string,
-  //   endDate?: string,
-  //   idClient?: number,
-  //   numeroFacture?: string,
-  // ): Promise<CommandeVente[]> {
-  //   // Log input parameters
-  //   console.log('findAll parameters:', {
-  //     startDate,
-  //     endDate,
-  //     idClient,
-  //     numeroFacture,
-  //   });
-
-  //   const where: any = { type_facture: 'FV', statut: 0 };
-  //   if (startDate && endDate) {
-  //     where.date_commande_vente = Between(
-  //       new Date(startDate),
-  //       new Date(endDate),
-  //     );
-  //   }
-  //   if (idClient) {
-  //     where.id_client = idClient;
-  //   }
-  //   if (numeroFacture) {
-  //     // where.id_commande_vente = Like(`%${numeroFacture}%`);
-  //     where.id_commande_vente = numeroFacture;
-  //   }
-
-  //   // Log the query conditions
-  //   console.log('Query conditions:', where);
-
-  //   try {
-  //     const result = await this.commandeVenteRepository.find({
-  //       where,
-  //       relations: ['client'],
-  //       select: [
-  //         'id_commande_vente',
-  //         'date_commande_vente',
-  //         'numero_seq',
-  //         'numero_facture_certifiee',
-  //         'montant_total',
-  //         'id_client',
-  //       ],
-  //       order: { date_commande_vente: 'DESC' },
-  //     });
-
-  //     // Log the result
-  //     console.log('Factures:', result);
-  //     return result;
-  //   } catch (error) {
-  //     // Log the error
-  //     console.log('Error fetching factures in findAll:', error);
-  //     throw new BadRequestException('Erreur lors du chargement des factures.');
-  //   }
-  // }
 
   async findAll(
     startDate?: string,
@@ -1539,14 +1797,6 @@ export class CommandeVenteService {
     } catch (error) {
       throw new BadRequestException('Erreur lors du chargement des factures.');
     }
-  }
-  async findOne(id: number): Promise<CommandeVente> {
-    const entity = await this.commandeVenteRepository.findOne({
-      where: { id_commande_vente: id },
-      relations: ['client', 'lignes'],
-    });
-    if (!entity) throw new NotFoundException('CommandeVente non trouvée');
-    return entity;
   }
 
   async create(dto: CreateCommandeVenteDto): Promise<CommandeVente> {
@@ -1745,17 +1995,20 @@ export class CommandeVenteService {
 
         console.log('Remise appliquée:', montant_remise, 'CFA');
 
-        // Calcul ISB/Précompte sur le montant HT APRÈS remise
+        // Calcul du montant HT après remise
         const montant_ht_apres_remise = montant_ht_total - montant_remise;
-        const montant_isb = montant_ht_apres_remise * isbRate;
 
         // Calculer TVA sur le montant après remise
         if (tvaCommande > 0) {
           montant_tva_total = montant_ht_apres_remise * (tvaCommande / 100);
         }
 
-        // Calculs finaux
+        // Timbre fiscal
         const timbre_fiscal = 200; // Fixe
+
+        // CORRECTION: Calcul ISB/Précompte sur (montant HT après remise + timbre fiscal)
+        const base_calcul_isb = montant_ht_apres_remise + timbre_fiscal;
+        const montant_isb = base_calcul_isb * isbRate;
 
         // Calcul du total : (HT - Remise) + TVA + ISB + Timbre
         const montant_total_final =
@@ -1768,9 +2021,11 @@ export class CommandeVenteService {
           montant_ht_initial: montant_ht_total,
           remise: montant_remise,
           montant_ht_apres_remise: montant_ht_apres_remise,
-          montant_tva: montant_tva_total,
-          montant_isb: montant_isb,
           timbre_fiscal: timbre_fiscal,
+          base_calcul_isb: base_calcul_isb,
+          taux_isb: isbRate,
+          montant_isb: montant_isb,
+          montant_tva: montant_tva_total,
           total_final: montant_total_final,
         });
 
@@ -1803,6 +2058,269 @@ export class CommandeVenteService {
     });
   }
 
+  //methde qui fais le calcule de l'isb sur le montant ht
+  // async create(dto: CreateCommandeVenteDto): Promise<CommandeVente> {
+  //   console.log('Payload reçu:', JSON.stringify(dto, null, 2));
+
+  //   return this.commandeVenteRepository.manager.transaction(async (manager) => {
+  //     try {
+  //       // Valider le client
+  //       const client = await manager.findOneBy(Client, {
+  //         id_client: dto.id_client,
+  //       });
+  //       if (!client) {
+  //         throw new BadRequestException(
+  //           `Client avec id ${dto.id_client} non trouvé`,
+  //         );
+  //       }
+
+  //       // Gérer l'ISB selon le type_isb
+  //       let isbRate = 0;
+  //       if (dto.type_isb) {
+  //         // Récupérer le taux ISB depuis la base
+  //         const isbs = await manager.find(Isb, { select: ['isb', 'taux'] });
+  //         const isbRecord = isbs.find((isb) => isb.isb === dto.type_isb);
+  //         if (isbRecord) {
+  //           isbRate = parseFloat(isbRecord.taux) || 0;
+  //         } else {
+  //           // Mapping par défaut si pas trouvé en DB
+  //           const isbMapping: { [key: string]: number } = {
+  //             '0%': 0,
+  //             '2%': 0.02,
+  //             '5%': 0.05,
+  //           };
+  //           isbRate = isbMapping[dto.type_isb] || 0.02; // 2% par défaut
+  //         }
+  //       }
+  //       console.log('Taux ISB appliqué:', isbRate, 'pour type:', dto.type_isb);
+
+  //       // TVA : utiliser celle fournie ou 0
+  //       const tvaCommande =
+  //         dto.tva != null && !isNaN(dto.tva) && dto.tva >= 0 ? dto.tva : 0;
+  //       console.log('TVA générale appliquée:', tvaCommande, '%');
+
+  //       // Génération numéro facture
+  //       const currentYear = new Date().getFullYear();
+  //       const lastCommande = await manager.findOne(CommandeVente, {
+  //         where: {
+  //           type_facture: 'FV',
+  //           numero_facture_certifiee: Like(`%-${currentYear}`),
+  //         },
+  //         order: { numero_seq: 'DESC' },
+  //       });
+  //       const numero_seq = lastCommande ? lastCommande.numero_seq + 1 : 1;
+  //       const numero_facture_certifiee = `${numero_seq.toString().padStart(4, '0')}-${currentYear}`;
+
+  //       // Vérifier unicité
+  //       const existingCommande = await manager.findOne(CommandeVente, {
+  //         where: { numero_facture_certifiee },
+  //       });
+  //       if (existingCommande) {
+  //         throw new BadRequestException(
+  //           `Une commande existe déjà avec le numéro de facture ${numero_facture_certifiee}`,
+  //         );
+  //       }
+
+  //       // Créer la commande (temporairement avec valeurs par défaut)
+  //       const commande = manager.create(CommandeVente, {
+  //         date_commande_vente: new Date(dto.date_commande_vente),
+  //         montant_total: 0, // Sera calculé
+  //         montant_paye: 0,
+  //         montant_restant: 0, // Sera calculé
+  //         remise: 0, // Sera calculé
+  //         validee: 1,
+  //         statut: 0,
+  //         id_client: dto.id_client,
+  //         client,
+  //         reglee: 0,
+  //         moyen_reglement: 0,
+  //         type_reglement: dto.type_reglement || 'E',
+  //         tva: 0, // Sera le montant TVA calculé
+  //         type_isb: dto.type_isb || '2%',
+  //         isb: 0, // Sera calculé
+  //         avoir: 0,
+  //         login: dto.login,
+  //         type_facture: 'FV',
+  //         reponse_mcf: '',
+  //         qrcode: '',
+  //         client_vd: dto.client_vd || '',
+  //         nif_vd: dto.nif_vd || '',
+  //         adresse_vd: dto.adresse_vd || '',
+  //         telephone_vd: dto.telephone_vd || '',
+  //         email_vd: dto.email_vd || '',
+  //         ville_vd: dto.ville_vd || '',
+  //         commentaire1: dto.commentaire1 || '',
+  //         commentaire2: dto.commentaire2 || '',
+  //         commentaire3: dto.commentaire3 || '',
+  //         commentaire4: dto.commentaire4 || '',
+  //         commentaire5: dto.commentaire5 || '',
+  //         commentaire6: dto.commentaire6 || '',
+  //         commentaire7: dto.commentaire7 || '',
+  //         commentaire8: dto.commentaire8 || '',
+  //         certifiee: 'NON',
+  //         counter_per_receipt_type: '',
+  //         total_receipt_counter: '',
+  //         receipt_type: '',
+  //         process_date_and_time: '',
+  //         device_dentification: '',
+  //         nif_: '',
+  //         signature: '',
+  //         ref_ini: '',
+  //         exoneration: '',
+  //         numero_seq,
+  //         numero_facture_certifiee,
+  //         imprimee: 1,
+  //         escompte: 0,
+  //       });
+
+  //       const savedCommande = await manager.save(CommandeVente, commande);
+  //       console.log(
+  //         `Commande sauvegardée avec id: ${savedCommande.id_commande_vente}`,
+  //       );
+
+  //       // Traitement des lignes - CALCULER D'ABORD LE MONTANT HT TOTAL
+  //       let montant_ht_total = 0; // Total HT (prix * quantité)
+  //       let montant_tva_total = 0; // Montant TVA calculé
+  //       const savedLignes: LignesCommandeVente[] = [];
+
+  //       for (const ligne of dto.lignes) {
+  //         const produit = await manager.findOneBy(Produit, {
+  //           id_produit: ligne.id_produit,
+  //         });
+  //         if (!produit) {
+  //           throw new BadRequestException(
+  //             `Produit avec id ${ligne.id_produit} non trouvé`,
+  //           );
+  //         }
+  //         if (ligne.quantite <= 0 || ligne.quantite > produit.stock_courant) {
+  //           throw new BadRequestException(
+  //             `Quantité invalide pour produit ${ligne.id_produit}: ${ligne.quantite}. Stock disponible: ${produit.stock_courant}`,
+  //           );
+  //         }
+
+  //         const prix_vente = ligne.prix_vente ?? produit.prix_unitaire;
+  //         const montant_ligne_ht = prix_vente * ligne.quantite; // Montant HT de la ligne
+
+  //         // Accumulation du montant HT total
+  //         montant_ht_total += montant_ligne_ht;
+
+  //         console.log(`Ligne ${ligne.id_produit}:`, {
+  //           prix_unitaire: prix_vente,
+  //           quantite: ligne.quantite,
+  //           montant_ht: montant_ligne_ht,
+  //         });
+
+  //         const ligneDto: CreateLignesCommandeVenteDto = {
+  //           id_produit: ligne.id_produit,
+  //           prix_vente,
+  //           remise: 0, // Pas de remise au niveau ligne
+  //           description_remise: 'Aucune',
+  //           prix_vente_avant_remise: prix_vente.toString(),
+  //           quantite: ligne.quantite,
+  //           group_tva: produit.group_tva ?? '',
+  //           etiquette_tva: produit.etiquette_tva ?? '',
+  //           taux_tva: tvaCommande,
+  //           isb_ligne: 0, // ISB géré au niveau commande
+  //           date: ligne.date ?? dto.date_commande_vente,
+  //         };
+
+  //         const savedLigne = await this.lignesCommandeVenteService.create(
+  //           ligneDto,
+  //           savedCommande.id_commande_vente,
+  //           dto.login,
+  //         );
+  //         savedLignes.push(savedLigne);
+  //       }
+
+  //       // MAINTENANT CALCULER LA REMISE (après avoir le montant HT total)
+  //       let montant_remise = 0;
+  //       const remiseFrontend =
+  //         dto.remise != null && !isNaN(dto.remise) && dto.remise >= 0
+  //           ? dto.remise
+  //           : 0;
+
+  //       if (remiseFrontend > 0) {
+  //         if (remiseFrontend < 1) {
+  //           // C'est un taux (ex: 0.02 = 2%)
+  //           montant_remise = montant_ht_total * remiseFrontend;
+  //           console.log(
+  //             `Remise calculée: ${montant_ht_total} × ${remiseFrontend} = ${montant_remise} CFA`,
+  //           );
+  //         } else {
+  //           // C'est un montant fixe
+  //           montant_remise = remiseFrontend;
+  //           console.log(`Remise fixe: ${montant_remise} CFA`);
+  //         }
+  //       }
+
+  //       console.log('Remise appliquée:', montant_remise, 'CFA');
+
+  //       // Calcul ISB/Précompte sur le montant HT APRÈS remise
+  //       const montant_ht_apres_remise = montant_ht_total - montant_remise;
+  //       const montant_isb = montant_ht_apres_remise * isbRate;
+
+  //       // Calculer TVA sur le montant après remise
+  //       if (tvaCommande > 0) {
+  //         montant_tva_total = montant_ht_apres_remise * (tvaCommande / 100);
+  //       }
+
+  //       // Calculs finaux
+  //       const timbre_fiscal = 200; // Fixe
+
+  //       // Calcul du total : (HT - Remise) + TVA + ISB + Timbre
+  //       const montant_total_final =
+  //         montant_ht_apres_remise +
+  //         montant_tva_total +
+  //         montant_isb +
+  //         timbre_fiscal;
+
+  //       console.log('Calculs finaux:', {
+  //         montant_ht_initial: montant_ht_total,
+  //         remise: montant_remise,
+  //         montant_ht_apres_remise: montant_ht_apres_remise,
+  //         montant_tva: montant_tva_total,
+  //         montant_isb: montant_isb,
+  //         timbre_fiscal: timbre_fiscal,
+  //         total_final: montant_total_final,
+  //       });
+
+  //       // Mise à jour de la commande
+  //       await manager.update(
+  //         CommandeVente,
+  //         { id_commande_vente: savedCommande.id_commande_vente },
+  //         {
+  //           montant_total: montant_total_final,
+  //           montant_restant: montant_total_final,
+  //           tva: montant_tva_total, // Montant TVA calculé
+  //           isb: montant_isb, // Montant ISB calculé
+  //           remise: montant_remise, // Montant remise calculé
+  //         },
+  //       );
+
+  //       // Mise à jour objet retourné
+  //       savedCommande.montant_total = montant_total_final;
+  //       savedCommande.montant_restant = montant_total_final;
+  //       savedCommande.tva = montant_tva_total;
+  //       savedCommande.isb = montant_isb;
+  //       savedCommande.remise = montant_remise;
+  //       savedCommande.lignes = savedLignes;
+
+  //       return savedCommande;
+  //     } catch (error) {
+  //       console.error('Erreur dans la transaction:', error);
+  //       throw error;
+  //     }
+  //   });
+  // }
+
+  async findOne(id: number): Promise<CommandeVente> {
+    const entity = await this.commandeVenteRepository.findOne({
+      where: { id_commande_vente: id },
+      relations: ['client', 'lignes'],
+    });
+    if (!entity) throw new NotFoundException('CommandeVente non trouvée');
+    return entity;
+  }
   async cancelCommandeVente(
     id_commande_vente: number,
     login: string,
@@ -3334,5 +3852,342 @@ export class CommandeVenteService {
           width: doc.page.width,
         },
       );
+  }
+
+  async exportCancelledInvoices(
+    res: Response,
+    startDate?: string,
+    endDate?: string,
+    idClient?: number,
+  ): Promise<void> {
+    try {
+      // Récupérer toutes les factures annulées
+      const factures = await this.findAllCancel(startDate, endDate, idClient);
+
+      if (!factures || factures.length === 0) {
+        throw new NotFoundException('Aucune facture annulée trouvée');
+      }
+
+      // Créer un document PDF unique pour toutes les factures
+      const doc = new PDFDocument({ size: 'A4', margin: this.MARGINS });
+
+      res.setHeader('Content-Type', 'application/pdf');
+      const filename = `factures_annulees_${new Date().toISOString().split('T')[0]}.pdf`;
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="${filename}"`,
+      );
+
+      doc.pipe(res);
+
+      // Parcourir chaque facture annulée
+      for (let i = 0; i < factures.length; i++) {
+        const factureId = factures[i].id_commande_vente;
+
+        // Récupérer les détails complets de la facture
+        const commande = await this.commandeVenteRepository.findOne({
+          where: { id_commande_vente: factureId },
+          relations: ['client', 'lignes', 'lignes.produit'],
+        });
+
+        if (!commande) continue;
+
+        // Ajouter une nouvelle page sauf pour la première facture
+        if (i > 0) {
+          doc.addPage();
+        }
+
+        // Dessiner le filigrane "ANNULÉE" en arrière-plan
+        this.drawCancelledWatermark(doc);
+
+        // Dessiner la facture normalement
+        this.drawHeader(doc, commande, 'full');
+        this.drawFullInvoice(doc, commande);
+      }
+
+      doc.end();
+    } catch (error) {
+      if (!res.headersSent) {
+        res.status(500).json({
+          message: `Erreur lors de l'export des factures annulées: ${error.message}`,
+        });
+      }
+      throw new BadRequestException(
+        `Erreur lors de l'export: ${error.message}`,
+      );
+    }
+  }
+
+  // Méthode pour dessiner le filigrane "ANNULÉE"
+  private drawCancelledWatermark(doc: PDFDocument): void {
+    // Sauvegarder l'état graphique actuel
+    doc.save();
+
+    // Configurer l'opacité et la couleur
+    doc.opacity(0.15); // Transparence à 15%
+    doc.fillColor('#FF0000'); // Rouge
+    doc.fontSize(80);
+    doc.font('Helvetica-Bold');
+
+    // Calculer la position centrale
+    const pageWidth = 595; // Largeur A4 en points
+    const pageHeight = 842; // Hauteur A4 en points
+
+    // Rotation et positionnement diagonal
+    doc.rotate(-45, { origin: [pageWidth / 2, pageHeight / 2] });
+
+    // Dessiner "ANNULÉE" au centre
+    doc.text('ANNULÉE', 0, pageHeight / 2 - 40, {
+      width: pageWidth,
+      align: 'center',
+    });
+
+    // Restaurer l'état graphique (opacité et rotation)
+    doc.restore();
+  }
+
+  // Méthode alternative: Exporter une seule facture annulée avec filigrane
+  async generateCancelledPdf(
+    id: number,
+    res: Response,
+    type: 'full' | 'simple' | 'bl' | 'bp' = 'full',
+  ): Promise<void> {
+    if (!this.VALID_TYPES.includes(type)) {
+      throw new BadRequestException(`Type de document non valide: ${type}`);
+    }
+
+    try {
+      const commande = await this.commandeVenteRepository.findOne({
+        where: { id_commande_vente: id },
+        relations: ['client', 'lignes', 'lignes.produit'],
+      });
+
+      if (!commande) {
+        throw new NotFoundException(`Commande avec id ${id} non trouvée`);
+      }
+
+      // Vérifier si la facture est bien annulée
+      if (commande.statut !== 1) {
+        throw new BadRequestException(
+          "Cette facture n'est pas annulée. Utilisez la méthode normale.",
+        );
+      }
+
+      if (!commande.lignes || !commande.client) {
+        throw new BadRequestException('Données de commande incomplètes');
+      }
+
+      // Créer le document PDF
+      const doc = new PDFDocument({ size: 'A4', margin: this.MARGINS });
+      res.setHeader('Content-Type', 'application/pdf');
+
+      const documentType =
+        type === 'bl'
+          ? 'bon_de_livraison'
+          : type === 'bp'
+            ? 'bon_de_preparation'
+            : 'facture';
+      const filename = `${documentType}_ANNULEE_${sanitizeString(commande.id_commande_vente.toString())}.pdf`;
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="${filename}"`,
+      );
+
+      doc.pipe(res);
+
+      // Dessiner le filigrane "ANNULÉE"
+      this.drawCancelledWatermark(doc);
+
+      // En-tête avec mention "ANNULÉE"
+      this.drawHeaderCancelled(doc, commande, type);
+
+      // Corps du document
+      switch (type) {
+        case 'full':
+          this.drawFullInvoice(doc, commande);
+          break;
+        case 'simple':
+          this.drawSimpleInvoice(doc, commande);
+          break;
+        case 'bl':
+          this.drawDeliveryNote(doc, commande);
+          break;
+        case 'bp':
+          this.drawPreparationNote(doc, commande);
+          break;
+      }
+
+      doc.end();
+    } catch (error) {
+      if (!res.headersSent) {
+        res.status(500).json({
+          message: `Erreur lors de la génération du PDF: ${error.message}`,
+        });
+      }
+      throw new BadRequestException(
+        `Erreur lors de la génération du PDF: ${error.message}`,
+      );
+    }
+  }
+
+  // En-tête modifié pour les factures annulées
+  private drawHeaderCancelled(
+    doc: PDFDocument,
+    commande: any,
+    type: string,
+  ): number {
+    const headerTop = 40;
+    const sectionWidth = (this.PAGE_WIDTH - 2 * this.MARGINS) / 3;
+
+    // Section 1: Alliance Pharma
+    doc
+      .rect(this.MARGINS, headerTop, sectionWidth, this.HEADER_HEIGHT)
+      .strokeColor('black')
+      .stroke();
+    doc.fontSize(10).font('Helvetica-Bold');
+    doc.text('ALLIANCE PHARMA', this.MARGINS + 10, headerTop + 10, {
+      width: sectionWidth - 20,
+      align: 'center',
+    });
+    doc.fontSize(8).font('Helvetica');
+    doc.text('Tel: 80130610', this.MARGINS + 10, headerTop + 25, {
+      width: sectionWidth - 20,
+      align: 'center',
+    });
+    doc.text(
+      'RCCM: NE/NIM/01/2024/B14/00004',
+      this.MARGINS + 10,
+      headerTop + 35,
+      {
+        width: sectionWidth - 20,
+        align: 'center',
+      },
+    );
+    doc.text('NIF: 37364/R', this.MARGINS + 10, headerTop + 45, {
+      width: sectionWidth - 20,
+      align: 'center',
+    });
+    doc.text('BP: 11807', this.MARGINS + 10, headerTop + 55, {
+      width: sectionWidth - 20,
+      align: 'center',
+    });
+    doc.text('Adresse: NIAMEY', this.MARGINS + 10, headerTop + 65, {
+      width: sectionWidth - 20,
+      align: 'center',
+    });
+
+    // Section 2: Logo
+    doc
+      .rect(
+        this.MARGINS + sectionWidth,
+        headerTop,
+        sectionWidth,
+        this.HEADER_HEIGHT,
+      )
+      .strokeColor('black')
+      .stroke();
+    try {
+      doc.image(
+        'src/uploads/rmlogo.png',
+        this.MARGINS + sectionWidth + (sectionWidth - 90) / 2,
+        headerTop + 10,
+        { width: 90 },
+      );
+    } catch (error) {
+      doc
+        .fontSize(10)
+        .font('Helvetica-Bold')
+        .text('LOGO', this.MARGINS + sectionWidth + 10, headerTop + 40, {
+          width: sectionWidth - 20,
+          align: 'center',
+        });
+    }
+
+    // Section 3: Numéro et date avec mention ANNULÉE
+    doc
+      .rect(
+        this.MARGINS + 2 * sectionWidth,
+        headerTop,
+        sectionWidth,
+        this.HEADER_HEIGHT,
+      )
+      .strokeColor('black')
+      .stroke();
+
+    doc.fontSize(8).font('Helvetica-Bold');
+    const documentTitle =
+      type === 'bl'
+        ? 'BON DE LIVRAISON'
+        : type === 'bp'
+          ? 'BON DE PRÉPARATION'
+          : 'FACTURE DE VENTE';
+
+    doc.text(
+      `${documentTitle} N° ${sanitizeString(commande.id_commande_vente.toString())}`,
+      this.MARGINS + 2 * sectionWidth + 10,
+      headerTop + 10,
+      { width: sectionWidth - 20, align: 'center' },
+    );
+
+    doc.fontSize(8).font('Helvetica');
+    doc.text(
+      `Date: ${formatDate(commande.date_commande_vente)}`,
+      this.MARGINS + 2 * sectionWidth + 10,
+      headerTop + 30,
+      { width: sectionWidth - 20, align: 'center' },
+    );
+
+    // Mention ANNULÉE en rouge
+    doc.fillColor('#FF0000').fontSize(10).font('Helvetica-Bold');
+    doc.text('ANNULÉE', this.MARGINS + 2 * sectionWidth + 10, headerTop + 50, {
+      width: sectionWidth - 20,
+      align: 'center',
+    });
+    doc.fillColor('black'); // Remettre en noir
+
+    // Séparateurs et reste identique...
+    doc
+      .moveTo(this.MARGINS + sectionWidth, headerTop)
+      .lineTo(this.MARGINS + sectionWidth, headerTop + this.HEADER_HEIGHT)
+      .stroke();
+    doc
+      .moveTo(this.MARGINS + 2 * sectionWidth, headerTop)
+      .lineTo(this.MARGINS + 2 * sectionWidth, headerTop + this.HEADER_HEIGHT)
+      .stroke();
+
+    const separatorY = headerTop + this.HEADER_HEIGHT + 10;
+    doc
+      .moveTo(this.MARGINS, separatorY)
+      .lineTo(this.PAGE_WIDTH - this.MARGINS, separatorY)
+      .stroke();
+
+    const infoTop = separatorY + 15;
+    doc.fontSize(8).font('Helvetica');
+
+    doc.text(`Login: ${sanitizeString(commande.login)}`, this.MARGINS, infoTop);
+
+    const clientX = this.MARGINS + 300;
+    doc.text(
+      `Client: ${sanitizeString(commande.client?.nom || 'N/A')}`,
+      clientX,
+      infoTop,
+    );
+    doc.text(
+      `NIF: ${sanitizeString(commande.client?.nif || 'N/A')}`,
+      clientX,
+      infoTop + 12,
+    );
+    doc.text(
+      `Adresse: ${sanitizeString(commande.client?.adresse || 'N/A')}`,
+      clientX,
+      infoTop + 24,
+    );
+    doc.text(
+      `Téléphone: ${sanitizeString(commande.client?.telephone || 'N/A')}`,
+      clientX,
+      infoTop + 36,
+    );
+
+    return infoTop + 55;
   }
 }
