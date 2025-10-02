@@ -15,6 +15,8 @@ import { Compte } from 'src/comptes/entities/compte.entity';
 import { TypeReglement } from 'src/type_reglement/type_reglement.entity';
 // import PDFDocument from 'pdfkit';
 import { Buffer } from 'buffer';
+import { MouvementCaisse } from 'src/mouvement_caisse/entities/mouvement_caisse.entity';
+import { MouvementCompte } from 'src/mouvement_compte/entities/mouvement_compte.entity';
 const PDFDocument = require('pdfkit');
 
 export interface PaymentDistributionResult {
@@ -212,314 +214,314 @@ export class ReglementService {
     }
   }
 
-  async createReglement(
-    createReglementDto: CreateReglementDto,
-  ): Promise<PaymentDistributionResult & { receipt: Buffer }> {
-    const {
-      id_client,
-      montant,
-      date,
-      id_type_reglement,
-      id_caisse,
-      id_compte,
-      id_commandes_vente,
-    } = createReglementDto;
+  // async createReglement(
+  //   createReglementDto: CreateReglementDto,
+  // ): Promise<PaymentDistributionResult & { receipt: Buffer }> {
+  //   const {
+  //     id_client,
+  //     montant,
+  //     date,
+  //     id_type_reglement,
+  //     id_caisse,
+  //     id_compte,
+  //     id_commandes_vente,
+  //   } = createReglementDto;
 
-    if (!id_client || montant <= 0 || !date || !id_type_reglement) {
-      throw new BadRequestException(
-        'id_client, montant positif, date et id_type_reglement sont requis',
-      );
-    }
+  //   if (!id_client || montant <= 0 || !date || !id_type_reglement) {
+  //     throw new BadRequestException(
+  //       'id_client, montant positif, date et id_type_reglement sont requis',
+  //     );
+  //   }
 
-    const client = await this.clientRepository.findOne({
-      where: { id_client },
-    });
-    if (!client) {
-      throw new NotFoundException(`Client avec l'ID ${id_client} non trouvé`);
-    }
+  //   const client = await this.clientRepository.findOne({
+  //     where: { id_client },
+  //   });
+  //   if (!client) {
+  //     throw new NotFoundException(`Client avec l'ID ${id_client} non trouvé`);
+  //   }
 
-    const typeReglement = await this.typeReglementRepository.findOne({
-      where: { id_type_reglement },
-    });
-    if (!typeReglement) {
-      throw new NotFoundException(
-        `Type de règlement avec l'ID ${id_type_reglement} non trouvé`,
-      );
-    }
+  //   const typeReglement = await this.typeReglementRepository.findOne({
+  //     where: { id_type_reglement },
+  //   });
+  //   if (!typeReglement) {
+  //     throw new NotFoundException(
+  //       `Type de règlement avec l'ID ${id_type_reglement} non trouvé`,
+  //     );
+  //   }
 
-    if (typeReglement.type_reglement === 'E' && !id_caisse) {
-      throw new BadRequestException(
-        'id_caisse est requis pour un règlement en espèces',
-      );
-    }
-    if (['D', 'V'].includes(typeReglement.type_reglement) && !id_compte) {
-      throw new BadRequestException(
-        'id_compte est requis pour un règlement par chèque ou virement',
-      );
-    }
+  //   if (typeReglement.type_reglement === 'E' && !id_caisse) {
+  //     throw new BadRequestException(
+  //       'id_caisse est requis pour un règlement en espèces',
+  //     );
+  //   }
+  //   if (['D', 'V'].includes(typeReglement.type_reglement) && !id_compte) {
+  //     throw new BadRequestException(
+  //       'id_compte est requis pour un règlement par chèque ou virement',
+  //     );
+  //   }
 
-    let caisse: Caisse | null = null;
-    let compte: Compte | null = null;
+  //   let caisse: Caisse | null = null;
+  //   let compte: Compte | null = null;
 
-    if (id_caisse) {
-      caisse = await this.caisseRepository.findOne({ where: { id_caisse } });
-      if (!caisse) {
-        throw new NotFoundException(
-          `Caisse avec l'ID ${id_caisse} non trouvée`,
-        );
-      }
-    }
-    if (id_compte) {
-      compte = await this.compteRepository.findOne({ where: { id_compte } });
-      if (!compte) {
-        throw new NotFoundException(`Compte avec l'ID ${id_compte} non trouvé`);
-      }
-    }
+  //   if (id_caisse) {
+  //     caisse = await this.caisseRepository.findOne({ where: { id_caisse } });
+  //     if (!caisse) {
+  //       throw new NotFoundException(
+  //         `Caisse avec l'ID ${id_caisse} non trouvée`,
+  //       );
+  //     }
+  //   }
+  //   if (id_compte) {
+  //     compte = await this.compteRepository.findOne({ where: { id_compte } });
+  //     if (!compte) {
+  //       throw new NotFoundException(`Compte avec l'ID ${id_compte} non trouvé`);
+  //     }
+  //   }
 
-    // CORRECTION: Récupérer TOUTES les factures du client, pas seulement les non réglées
-    const factures = await this.commandeVenteRepository
-      .createQueryBuilder('commande')
-      .where('commande.id_client = :id_client', { id_client })
-      .orderBy('commande.date_commande_vente', 'ASC')
-      .getMany();
+  //   // CORRECTION: Récupérer TOUTES les factures du client, pas seulement les non réglées
+  //   const factures = await this.commandeVenteRepository
+  //     .createQueryBuilder('commande')
+  //     .where('commande.id_client = :id_client', { id_client })
+  //     .orderBy('commande.date_commande_vente', 'ASC')
+  //     .getMany();
 
-    console.log(
-      `Factures récupérées pour le client ${id_client}: ${factures.length}`,
-    );
+  //   console.log(
+  //     `Factures récupérées pour le client ${id_client}: ${factures.length}`,
+  //   );
 
-    // Amélioration de la validation des factures spécifiées
-    let prioritizedFactures = [...factures];
-    if (id_commandes_vente && id_commandes_vente.length > 0) {
-      console.log('Factures demandées:', id_commandes_vente);
-      console.log(
-        'Factures disponibles:',
-        factures.map((f) => ({
-          id: f.id_commande_vente.toString(),
-          reglee: f.reglee,
-          montant_restant: f.montant_restant,
-          montant_total: f.montant_total,
-          montant_paye: f.montant_paye || 0,
-        })),
-      );
+  //   // Amélioration de la validation des factures spécifiées
+  //   let prioritizedFactures = [...factures];
+  //   if (id_commandes_vente && id_commandes_vente.length > 0) {
+  //     console.log('Factures demandées:', id_commandes_vente);
+  //     console.log(
+  //       'Factures disponibles:',
+  //       factures.map((f) => ({
+  //         id: f.id_commande_vente.toString(),
+  //         reglee: f.reglee,
+  //         montant_restant: f.montant_restant,
+  //         montant_total: f.montant_total,
+  //         montant_paye: f.montant_paye || 0,
+  //       })),
+  //     );
 
-      // Vérifier d'abord si les factures existent AVANT de filtrer par statut
-      const facturesExistantes = factures.filter((f) =>
-        id_commandes_vente.includes(f.id_commande_vente.toString()),
-      );
+  //     // Vérifier d'abord si les factures existent AVANT de filtrer par statut
+  //     const facturesExistantes = factures.filter((f) =>
+  //       id_commandes_vente.includes(f.id_commande_vente.toString()),
+  //     );
 
-      if (facturesExistantes.length === 0) {
-        throw new BadRequestException(
-          `Aucune des factures spécifiées (${id_commandes_vente.join(', ')}) n'existe pour ce client`,
-        );
-      }
+  //     if (facturesExistantes.length === 0) {
+  //       throw new BadRequestException(
+  //         `Aucune des factures spécifiées (${id_commandes_vente.join(', ')}) n'existe pour ce client`,
+  //       );
+  //     }
 
-      // Identifier les factures qui n'existent pas
-      const missingIds = id_commandes_vente.filter(
-        (id) => !factures.some((f) => f.id_commande_vente.toString() === id),
-      );
+  //     // Identifier les factures qui n'existent pas
+  //     const missingIds = id_commandes_vente.filter(
+  //       (id) => !factures.some((f) => f.id_commande_vente.toString() === id),
+  //     );
 
-      if (missingIds.length > 0) {
-        throw new BadRequestException(
-          `Les factures suivantes n'existent pas pour ce client: ${missingIds.join(', ')}`,
-        );
-      }
+  //     if (missingIds.length > 0) {
+  //       throw new BadRequestException(
+  //         `Les factures suivantes n'existent pas pour ce client: ${missingIds.join(', ')}`,
+  //       );
+  //     }
 
-      // Ne filtrer que les factures qui PEUVENT recevoir un paiement
-      const facturesValides = facturesExistantes.filter((f) => {
-        const montantDu = f.montant_total - (f.montant_paye || 0);
-        return montantDu > 0; // Seules les factures avec un montant dû > 0 peuvent recevoir un paiement
-      });
+  //     // Ne filtrer que les factures qui PEUVENT recevoir un paiement
+  //     const facturesValides = facturesExistantes.filter((f) => {
+  //       const montantDu = f.montant_total - (f.montant_paye || 0);
+  //       return montantDu > 0; // Seules les factures avec un montant dû > 0 peuvent recevoir un paiement
+  //     });
 
-      if (facturesValides.length === 0) {
-        const facturesReglees = facturesExistantes.filter((f) => {
-          const montantDu = f.montant_total - (f.montant_paye || 0);
-          return montantDu <= 0;
-        });
+  //     if (facturesValides.length === 0) {
+  //       const facturesReglees = facturesExistantes.filter((f) => {
+  //         const montantDu = f.montant_total - (f.montant_paye || 0);
+  //         return montantDu <= 0;
+  //       });
 
-        throw new BadRequestException(
-          `Toutes les factures spécifiées sont déjà entièrement réglées: ${facturesReglees.map((f) => f.id_commande_vente).join(', ')}`,
-        );
-      }
+  //       throw new BadRequestException(
+  //         `Toutes les factures spécifiées sont déjà entièrement réglées: ${facturesReglees.map((f) => f.id_commande_vente).join(', ')}`,
+  //       );
+  //     }
 
-      // Identifier les factures spécifiées qui sont déjà réglées (pour information)
-      const facturesDejaReglees = facturesExistantes.filter((f) => {
-        const montantDu = f.montant_total - (f.montant_paye || 0);
-        return montantDu <= 0;
-      });
+  //     // Identifier les factures spécifiées qui sont déjà réglées (pour information)
+  //     const facturesDejaReglees = facturesExistantes.filter((f) => {
+  //       const montantDu = f.montant_total - (f.montant_paye || 0);
+  //       return montantDu <= 0;
+  //     });
 
-      if (facturesDejaReglees.length > 0) {
-        console.log(
-          `Avertissement: Ces factures sont déjà réglées et seront ignorées: ${facturesDejaReglees.map((f) => f.id_commande_vente).join(', ')}`,
-        );
-      }
+  //     if (facturesDejaReglees.length > 0) {
+  //       console.log(
+  //         `Avertissement: Ces factures sont déjà réglées et seront ignorées: ${facturesDejaReglees.map((f) => f.id_commande_vente).join(', ')}`,
+  //       );
+  //     }
 
-      // Utiliser seulement les factures valides pour le règlement
-      prioritizedFactures = [
-        ...facturesValides.sort(
-          (a, b) =>
-            id_commandes_vente.indexOf(a.id_commande_vente.toString()) -
-            id_commandes_vente.indexOf(b.id_commande_vente.toString()),
-        ),
-        // Ajouter les autres factures non réglées du client (non spécifiées)
-        ...factures.filter((f) => {
-          const nonSpecifiee = !id_commandes_vente.includes(
-            f.id_commande_vente.toString(),
-          );
-          const montantDu = f.montant_total - (f.montant_paye || 0);
-          return nonSpecifiee && montantDu > 0;
-        }),
-      ];
+  //     // Utiliser seulement les factures valides pour le règlement
+  //     prioritizedFactures = [
+  //       ...facturesValides.sort(
+  //         (a, b) =>
+  //           id_commandes_vente.indexOf(a.id_commande_vente.toString()) -
+  //           id_commandes_vente.indexOf(b.id_commande_vente.toString()),
+  //       ),
+  //       // Ajouter les autres factures non réglées du client (non spécifiées)
+  //       ...factures.filter((f) => {
+  //         const nonSpecifiee = !id_commandes_vente.includes(
+  //           f.id_commande_vente.toString(),
+  //         );
+  //         const montantDu = f.montant_total - (f.montant_paye || 0);
+  //         return nonSpecifiee && montantDu > 0;
+  //       }),
+  //     ];
 
-      console.log(
-        `Factures valides pour règlement: ${facturesValides.map((f) => f.id_commande_vente).join(', ')}`,
-      );
-    } else {
-      // Si aucune facture spécifiée, utiliser seulement les factures avec un solde dû
-      prioritizedFactures = factures.filter((f) => {
-        const montantDu = f.montant_total - (f.montant_paye || 0);
-        return montantDu > 0;
-      });
-    }
+  //     console.log(
+  //       `Factures valides pour règlement: ${facturesValides.map((f) => f.id_commande_vente).join(', ')}`,
+  //     );
+  //   } else {
+  //     // Si aucune facture spécifiée, utiliser seulement les factures avec un solde dû
+  //     prioritizedFactures = factures.filter((f) => {
+  //       const montantDu = f.montant_total - (f.montant_paye || 0);
+  //       return montantDu > 0;
+  //     });
+  //   }
 
-    // Vérifier qu'il y a au moins une facture à traiter
-    if (prioritizedFactures.length === 0) {
-      throw new BadRequestException(
-        'Aucune facture disponible pour ce règlement. Toutes les factures du client sont déjà entièrement réglées.',
-      );
-    }
+  //   // Vérifier qu'il y a au moins une facture à traiter
+  //   if (prioritizedFactures.length === 0) {
+  //     throw new BadRequestException(
+  //       'Aucune facture disponible pour ce règlement. Toutes les factures du client sont déjà entièrement réglées.',
+  //     );
+  //   }
 
-    console.log(
-      `Factures ${id_commandes_vente ? id_commandes_vente.join(', ') + ' ' : ''}priorisées pour le règlement.`,
-    );
+  //   console.log(
+  //     `Factures ${id_commandes_vente ? id_commandes_vente.join(', ') + ' ' : ''}priorisées pour le règlement.`,
+  //   );
 
-    let montantRestant = montant;
-    const facturesAffectees: PaymentDistributionResult['facturesAffectees'] =
-      [];
-    const reglementsToSave: Reglement[] = [];
+  //   let montantRestant = montant;
+  //   const facturesAffectees: PaymentDistributionResult['facturesAffectees'] =
+  //     [];
+  //   const reglementsToSave: Reglement[] = [];
 
-    let montantAppliqueAuxFactures = 0;
-    for (const facture of prioritizedFactures) {
-      if (montantRestant <= 0) break;
+  //   let montantAppliqueAuxFactures = 0;
+  //   for (const facture of prioritizedFactures) {
+  //     if (montantRestant <= 0) break;
 
-      const montantDu = facture.montant_total - (facture.montant_paye || 0);
-      if (montantDu <= 0) {
-        console.log(
-          `Facture ${facture.id_commande_vente} déjà réglée, ignorée`,
-        );
-        continue;
-      }
+  //     const montantDu = facture.montant_total - (facture.montant_paye || 0);
+  //     if (montantDu <= 0) {
+  //       console.log(
+  //         `Facture ${facture.id_commande_vente} déjà réglée, ignorée`,
+  //       );
+  //       continue;
+  //     }
 
-      const montantAffecte = Math.min(montantRestant, montantDu);
-      montantRestant -= montantAffecte;
-      montantAppliqueAuxFactures += montantAffecte;
+  //     const montantAffecte = Math.min(montantRestant, montantDu);
+  //     montantRestant -= montantAffecte;
+  //     montantAppliqueAuxFactures += montantAffecte;
 
-      facture.montant_paye = (facture.montant_paye || 0) + montantAffecte;
-      facture.montant_restant = facture.montant_total - facture.montant_paye;
-      facture.reglee = facture.montant_restant <= 0 ? 1 : 0;
+  //     facture.montant_paye = (facture.montant_paye || 0) + montantAffecte;
+  //     facture.montant_restant = facture.montant_total - facture.montant_paye;
+  //     facture.reglee = facture.montant_restant <= 0 ? 1 : 0;
 
-      const reglement = new Reglement();
-      reglement.id_client = id_client;
-      reglement.client = client;
-      reglement.montant = montantAffecte;
-      reglement.date = date;
-      reglement.id_commande_vente = facture.id_commande_vente.toString();
-      reglement.commandeVente = facture;
-      reglement.id_type_reglement = id_type_reglement;
-      reglement.typeReglement = typeReglement;
-      reglement.id_caisse = id_caisse || null;
-      reglement.caisse = caisse || null;
-      reglement.id_compte = id_compte || null;
-      reglement.compte = compte || null;
+  //     const reglement = new Reglement();
+  //     reglement.id_client = id_client;
+  //     reglement.client = client;
+  //     reglement.montant = montantAffecte;
+  //     reglement.date = date;
+  //     reglement.id_commande_vente = facture.id_commande_vente.toString();
+  //     reglement.commandeVente = facture;
+  //     reglement.id_type_reglement = id_type_reglement;
+  //     reglement.typeReglement = typeReglement;
+  //     reglement.id_caisse = id_caisse || null;
+  //     reglement.caisse = caisse || null;
+  //     reglement.id_compte = id_compte || null;
+  //     reglement.compte = compte || null;
 
-      reglementsToSave.push(reglement);
+  //     reglementsToSave.push(reglement);
 
-      facturesAffectees.push({
-        id_commande_vente: facture.id_commande_vente.toString(),
-        montant_total: facture.montant_total,
-        montant_paye_avant: (facture.montant_paye || 0) - montantAffecte,
-        montant_paye_actuel: montantAffecte,
-        montant_restant: facture.montant_restant,
-        reglee: facture.reglee === 1,
-      });
+  //     facturesAffectees.push({
+  //       id_commande_vente: facture.id_commande_vente.toString(),
+  //       montant_total: facture.montant_total,
+  //       montant_paye_avant: (facture.montant_paye || 0) - montantAffecte,
+  //       montant_paye_actuel: montantAffecte,
+  //       montant_restant: facture.montant_restant,
+  //       reglee: facture.reglee === 1,
+  //     });
 
-      console.log(
-        `Facture ${facture.id_commande_vente} mise à jour: montant_paye=${facture.montant_paye}, montant_restant=${facture.montant_restant}`,
-      );
-    }
+  //     console.log(
+  //       `Facture ${facture.id_commande_vente} mise à jour: montant_paye=${facture.montant_paye}, montant_restant=${facture.montant_restant}`,
+  //     );
+  //   }
 
-    client.solde = (client.solde || 0) - montantAppliqueAuxFactures;
-    if (client.solde < 0) {
-      client.solde = 0;
-    }
+  //   client.solde = (client.solde || 0) - montantAppliqueAuxFactures;
+  //   if (client.solde < 0) {
+  //     client.solde = 0;
+  //   }
 
-    if (montantRestant > 0) {
-      client.avance = (client.avance || 0) + montantRestant;
-      console.log(
-        `Avance mise à jour pour le client ${id_client}: ${client.avance}`,
-      );
-    }
+  //   if (montantRestant > 0) {
+  //     client.avance = (client.avance || 0) + montantRestant;
+  //     console.log(
+  //       `Avance mise à jour pour le client ${id_client}: ${client.avance}`,
+  //     );
+  //   }
 
-    if (caisse) {
-      caisse.solde = (caisse.solde || 0) + montant;
-    }
-    if (compte) {
-      compte.solde = (compte.solde || 0) + montant;
-    }
+  //   if (caisse) {
+  //     caisse.solde = (caisse.solde || 0) + montant;
+  //   }
+  //   if (compte) {
+  //     compte.solde = (compte.solde || 0) + montant;
+  //   }
 
-    try {
-      await this.dataSource.transaction(async (transactionalEntityManager) => {
-        if (caisse) {
-          await transactionalEntityManager.save(Caisse, caisse);
-        }
-        if (compte) {
-          await transactionalEntityManager.save(Compte, compte);
-        }
-        await transactionalEntityManager.save(Client, client);
-        await transactionalEntityManager.save(
-          CommandeVente,
-          prioritizedFactures,
-        );
-        await transactionalEntityManager.save(Reglement, reglementsToSave);
-      });
+  //   try {
+  //     await this.dataSource.transaction(async (transactionalEntityManager) => {
+  //       if (caisse) {
+  //         await transactionalEntityManager.save(Caisse, caisse);
+  //       }
+  //       if (compte) {
+  //         await transactionalEntityManager.save(Compte, compte);
+  //       }
+  //       await transactionalEntityManager.save(Client, client);
+  //       await transactionalEntityManager.save(
+  //         CommandeVente,
+  //         prioritizedFactures,
+  //       );
+  //       await transactionalEntityManager.save(Reglement, reglementsToSave);
+  //     });
 
-      // Générer le reçu de paiement
-      const receipt = await this.generatePaymentReceipt({
-        client,
-        facturesAffectees,
-        montant,
-        date,
-        typeReglement,
-        caisse,
-        compte,
-      });
+  //     // Générer le reçu de paiement
+  //     const receipt = await this.generatePaymentReceipt({
+  //       client,
+  //       facturesAffectees,
+  //       montant,
+  //       date,
+  //       typeReglement,
+  //       caisse,
+  //       compte,
+  //     });
 
-      if (caisse) {
-        console.log(
-          `Solde de la caisse ${id_caisse} mis à jour: ${caisse.solde}`,
-        );
-      }
-      if (compte) {
-        console.log(`Solde du compte ${id_compte} mis à jour: ${compte.solde}`);
-      }
-      console.log(
-        `Client ${id_client} mis à jour: solde=${client.solde}, avance=${client.avance}`,
-      );
-      console.log(
-        'Règlements créés et factures mises à jour:',
-        JSON.stringify(facturesAffectees, null, 2),
-      );
+  //     if (caisse) {
+  //       console.log(
+  //         `Solde de la caisse ${id_caisse} mis à jour: ${caisse.solde}`,
+  //       );
+  //     }
+  //     if (compte) {
+  //       console.log(`Solde du compte ${id_compte} mis à jour: ${compte.solde}`);
+  //     }
+  //     console.log(
+  //       `Client ${id_client} mis à jour: solde=${client.solde}, avance=${client.avance}`,
+  //     );
+  //     console.log(
+  //       'Règlements créés et factures mises à jour:',
+  //       JSON.stringify(facturesAffectees, null, 2),
+  //     );
 
-      return {
-        facturesAffectees,
-        avance: client.avance,
-        montantRestant,
-        receipt, // Retourner le buffer du PDF
-      };
-    } catch (error) {
-      console.error('Erreur lors de la création du règlement:', error);
-      throw new BadRequestException('Erreur lors de la création du règlement');
-    }
-  }
+  //     return {
+  //       facturesAffectees,
+  //       avance: client.avance,
+  //       montantRestant,
+  //       receipt, // Retourner le buffer du PDF
+  //     };
+  //   } catch (error) {
+  //     console.error('Erreur lors de la création du règlement:', error);
+  //     throw new BadRequestException('Erreur lors de la création du règlement');
+  //   }
+  // }
 
   private getTypeReglementLabel(type: string): string {
     const labels = {
@@ -1062,5 +1064,382 @@ export class ReglementService {
       thousand === 1 ? 'mille' : this.numberToWordsFr(thousand) + ' mille';
     if (rest > 0) result += ' ' + this.numberToWordsFr(rest);
     return result;
+  }
+
+  //reglemeent avec mouvement de caisse er compte
+
+  async createReglement(
+    createReglementDto: CreateReglementDto,
+  ): Promise<PaymentDistributionResult & { receipt: Buffer }> {
+    const {
+      id_client,
+      montant,
+      date,
+      id_type_reglement,
+      id_caisse,
+      id_compte,
+      id_commandes_vente,
+    } = createReglementDto;
+
+    // Validations initiales
+    if (!id_client || montant <= 0 || !date || !id_type_reglement) {
+      throw new BadRequestException(
+        'id_client, montant positif, date et id_type_reglement sont requis',
+      );
+    }
+
+    // Vérifier le client
+    const client = await this.clientRepository.findOne({
+      where: { id_client },
+    });
+    if (!client) {
+      throw new NotFoundException(`Client avec l'ID ${id_client} non trouvé`);
+    }
+
+    // Vérifier le type de règlement
+    const typeReglement = await this.typeReglementRepository.findOne({
+      where: { id_type_reglement },
+    });
+    if (!typeReglement) {
+      throw new NotFoundException(
+        `Type de règlement avec l'ID ${id_type_reglement} non trouvé`,
+      );
+    }
+
+    // Validation selon le type de règlement
+    if (typeReglement.type_reglement === 'E' && !id_caisse) {
+      throw new BadRequestException(
+        'id_caisse est requis pour un règlement en espèces',
+      );
+    }
+    if (['D', 'V'].includes(typeReglement.type_reglement) && !id_compte) {
+      throw new BadRequestException(
+        'id_compte est requis pour un règlement par chèque ou virement',
+      );
+    }
+
+    // Récupérer caisse et compte si nécessaire
+    let caisse: Caisse | null = null;
+    let compte: Compte | null = null;
+
+    if (id_caisse) {
+      caisse = await this.caisseRepository.findOne({ where: { id_caisse } });
+      if (!caisse) {
+        throw new NotFoundException(
+          `Caisse avec l'ID ${id_caisse} non trouvée`,
+        );
+      }
+    }
+    if (id_compte) {
+      compte = await this.compteRepository.findOne({ where: { id_compte } });
+      if (!compte) {
+        throw new NotFoundException(`Compte avec l'ID ${id_compte} non trouvé`);
+      }
+    }
+
+    // Récupérer toutes les factures du client
+    const factures = await this.commandeVenteRepository
+      .createQueryBuilder('commande')
+      .where('commande.id_client = :id_client', { id_client })
+      .orderBy('commande.date_commande_vente', 'ASC')
+      .getMany();
+
+    console.log(
+      `Factures récupérées pour le client ${id_client}: ${factures.length}`,
+    );
+
+    // Prioriser les factures spécifiées
+    let prioritizedFactures = [...factures];
+    if (id_commandes_vente && id_commandes_vente.length > 0) {
+      console.log('Factures demandées:', id_commandes_vente);
+
+      // Vérifier que les factures existent
+      const facturesExistantes = factures.filter((f) =>
+        id_commandes_vente.includes(f.id_commande_vente.toString()),
+      );
+
+      if (facturesExistantes.length === 0) {
+        throw new BadRequestException(
+          `Aucune des factures spécifiées (${id_commandes_vente.join(', ')}) n'existe pour ce client`,
+        );
+      }
+
+      // Identifier les factures manquantes
+      const missingIds = id_commandes_vente.filter(
+        (id) => !factures.some((f) => f.id_commande_vente.toString() === id),
+      );
+
+      if (missingIds.length > 0) {
+        throw new BadRequestException(
+          `Les factures suivantes n'existent pas pour ce client: ${missingIds.join(', ')}`,
+        );
+      }
+
+      // Filtrer les factures valides (avec montant dû > 0)
+      const facturesValides = facturesExistantes.filter((f) => {
+        const montantDu = f.montant_total - (f.montant_paye || 0);
+        return montantDu > 0;
+      });
+
+      if (facturesValides.length === 0) {
+        const facturesReglees = facturesExistantes.filter((f) => {
+          const montantDu = f.montant_total - (f.montant_paye || 0);
+          return montantDu <= 0;
+        });
+
+        throw new BadRequestException(
+          `Toutes les factures spécifiées sont déjà entièrement réglées: ${facturesReglees.map((f) => f.id_commande_vente).join(', ')}`,
+        );
+      }
+
+      // Avertir des factures déjà réglées
+      const facturesDejaReglees = facturesExistantes.filter((f) => {
+        const montantDu = f.montant_total - (f.montant_paye || 0);
+        return montantDu <= 0;
+      });
+
+      if (facturesDejaReglees.length > 0) {
+        console.log(
+          `Avertissement: Ces factures sont déjà réglées et seront ignorées: ${facturesDejaReglees.map((f) => f.id_commande_vente).join(', ')}`,
+        );
+      }
+
+      // Prioriser les factures valides
+      prioritizedFactures = [
+        ...facturesValides.sort(
+          (a, b) =>
+            id_commandes_vente.indexOf(a.id_commande_vente.toString()) -
+            id_commandes_vente.indexOf(b.id_commande_vente.toString()),
+        ),
+        ...factures.filter((f) => {
+          const nonSpecifiee = !id_commandes_vente.includes(
+            f.id_commande_vente.toString(),
+          );
+          const montantDu = f.montant_total - (f.montant_paye || 0);
+          return nonSpecifiee && montantDu > 0;
+        }),
+      ];
+
+      console.log(
+        `Factures valides pour règlement: ${facturesValides.map((f) => f.id_commande_vente).join(', ')}`,
+      );
+    } else {
+      // Si aucune facture spécifiée, utiliser les factures avec solde dû
+      prioritizedFactures = factures.filter((f) => {
+        const montantDu = f.montant_total - (f.montant_paye || 0);
+        return montantDu > 0;
+      });
+    }
+
+    // Vérifier qu'il y a des factures à traiter
+    if (prioritizedFactures.length === 0) {
+      throw new BadRequestException(
+        'Aucune facture disponible pour ce règlement. Toutes les factures du client sont déjà entièrement réglées.',
+      );
+    }
+
+    console.log(
+      `Factures ${id_commandes_vente ? id_commandes_vente.join(', ') + ' ' : ''}priorisées pour le règlement.`,
+    );
+
+    // Distribution du montant sur les factures
+    let montantRestant = montant;
+    const facturesAffectees: PaymentDistributionResult['facturesAffectees'] =
+      [];
+    const reglementsToSave: Reglement[] = [];
+
+    let montantAppliqueAuxFactures = 0;
+    for (const facture of prioritizedFactures) {
+      if (montantRestant <= 0) break;
+
+      const montantDu = facture.montant_total - (facture.montant_paye || 0);
+      if (montantDu <= 0) {
+        console.log(
+          `Facture ${facture.id_commande_vente} déjà réglée, ignorée`,
+        );
+        continue;
+      }
+
+      const montantAffecte = Math.min(montantRestant, montantDu);
+      montantRestant -= montantAffecte;
+      montantAppliqueAuxFactures += montantAffecte;
+
+      facture.montant_paye = (facture.montant_paye || 0) + montantAffecte;
+      facture.montant_restant = facture.montant_total - facture.montant_paye;
+      facture.reglee = facture.montant_restant <= 0 ? 1 : 0;
+
+      const reglement = new Reglement();
+      reglement.id_client = id_client;
+      reglement.client = client;
+      reglement.montant = montantAffecte;
+      reglement.date = date;
+      reglement.id_commande_vente = facture.id_commande_vente.toString();
+      reglement.commandeVente = facture;
+      reglement.id_type_reglement = id_type_reglement;
+      reglement.typeReglement = typeReglement;
+      reglement.id_caisse = id_caisse || null;
+      reglement.caisse = caisse || null;
+      reglement.id_compte = id_compte || null;
+      reglement.compte = compte || null;
+
+      reglementsToSave.push(reglement);
+
+      facturesAffectees.push({
+        id_commande_vente: facture.id_commande_vente.toString(),
+        montant_total: facture.montant_total,
+        montant_paye_avant: (facture.montant_paye || 0) - montantAffecte,
+        montant_paye_actuel: montantAffecte,
+        montant_restant: facture.montant_restant,
+        reglee: facture.reglee === 1,
+      });
+
+      console.log(
+        `Facture ${facture.id_commande_vente} mise à jour: montant_paye=${facture.montant_paye}, montant_restant=${facture.montant_restant}`,
+      );
+    }
+
+    // Mise à jour du solde et avance du client
+    client.solde = (client.solde || 0) - montantAppliqueAuxFactures;
+    if (client.solde < 0) {
+      client.solde = 0;
+    }
+
+    if (montantRestant > 0) {
+      client.avance = (client.avance || 0) + montantRestant;
+      console.log(
+        `Avance mise à jour pour le client ${id_client}: ${client.avance}`,
+      );
+    }
+
+    // Préparation des mouvements de caisse/compte
+    let mouvementCaisse: MouvementCaisse | null = null;
+    let mouvementCompte: MouvementCompte | null = null;
+
+    if (caisse) {
+      const soldeCaisseAvant = caisse.solde || 0;
+      caisse.solde = soldeCaisseAvant + montant;
+
+      mouvementCaisse = new MouvementCaisse();
+      mouvementCaisse.id_caisse = caisse.id_caisse;
+      mouvementCaisse.caisse = caisse;
+      mouvementCaisse.type_mouvement = 'ENTREE';
+      mouvementCaisse.montant = montant;
+      mouvementCaisse.date_mouvement = new Date(date);
+      mouvementCaisse.type_operation = 'REGLEMENT';
+      mouvementCaisse.solde_avant = soldeCaisseAvant;
+      mouvementCaisse.solde_apres = caisse.solde;
+      mouvementCaisse.libelle = `Règlement client ${client.nom || client.id_client} - ${facturesAffectees.length} facture(s) : ${facturesAffectees.map((f) => f.id_commande_vente).join(', ')}`;
+    }
+
+    if (compte) {
+      const soldeCompteAvant = compte.solde || 0;
+      compte.solde = soldeCompteAvant + montant;
+
+      mouvementCompte = new MouvementCompte();
+      mouvementCompte.id_compte = compte.id_compte;
+      mouvementCompte.compte = compte;
+      mouvementCompte.type_mouvement = 'CREDIT';
+      mouvementCompte.montant = montant;
+      mouvementCompte.date_mouvement = new Date(date);
+      mouvementCompte.type_operation = 'REGLEMENT';
+      mouvementCompte.solde_avant = soldeCompteAvant;
+      mouvementCompte.solde_apres = compte.solde;
+      mouvementCompte.libelle = `Règlement ${typeReglement.type_reglement || typeReglement.type_reglement} - Client ${client.nom || client.id_client} - ${facturesAffectees.length} facture(s)`;
+      mouvementCompte.numero_piece =
+        typeReglement.type_reglement === 'D' ? 'Chèque à définir' : null;
+    }
+
+    // Transaction pour sauvegarder toutes les modifications
+    try {
+      await this.dataSource.transaction(async (transactionalEntityManager) => {
+        // Sauvegarder caisse et son mouvement
+        if (caisse && mouvementCaisse) {
+          await transactionalEntityManager.save(Caisse, caisse);
+          await transactionalEntityManager.save(
+            MouvementCaisse,
+            mouvementCaisse,
+          );
+        }
+
+        // Sauvegarder compte et son mouvement
+        if (compte && mouvementCompte) {
+          await transactionalEntityManager.save(Compte, compte);
+          await transactionalEntityManager.save(
+            MouvementCompte,
+            mouvementCompte,
+          );
+        }
+
+        // Sauvegarder client et factures
+        await transactionalEntityManager.save(Client, client);
+        await transactionalEntityManager.save(
+          CommandeVente,
+          prioritizedFactures,
+        );
+
+        // Sauvegarder les règlements
+        const savedReglements = await transactionalEntityManager.save(
+          Reglement,
+          reglementsToSave,
+        );
+
+        // Mettre à jour les mouvements avec l'ID du règlement
+        if (mouvementCaisse && savedReglements.length > 0) {
+          mouvementCaisse.id_reglement = savedReglements[0].id_reglement;
+          await transactionalEntityManager.save(
+            MouvementCaisse,
+            mouvementCaisse,
+          );
+        }
+
+        if (mouvementCompte && savedReglements.length > 0) {
+          mouvementCompte.id_reglement = savedReglements[0].id_reglement;
+          await transactionalEntityManager.save(
+            MouvementCompte,
+            mouvementCompte,
+          );
+        }
+      });
+
+      // Générer le reçu de paiement
+      const receipt = await this.generatePaymentReceipt({
+        client,
+        facturesAffectees,
+        montant,
+        date,
+        typeReglement,
+        caisse,
+        compte,
+      });
+
+      // Logs de confirmation
+      if (caisse) {
+        console.log(
+          `✅ Caisse ${id_caisse} mise à jour: solde=${caisse.solde} (mouvement enregistré)`,
+        );
+      }
+      if (compte) {
+        console.log(
+          `✅ Compte ${id_compte} mis à jour: solde=${compte.solde} (mouvement enregistré)`,
+        );
+      }
+      console.log(
+        `✅ Client ${id_client} mis à jour: solde=${client.solde}, avance=${client.avance}`,
+      );
+      console.log(
+        '✅ Règlements créés et factures mises à jour:',
+        JSON.stringify(facturesAffectees, null, 2),
+      );
+
+      return {
+        facturesAffectees,
+        avance: client.avance,
+        montantRestant,
+        receipt,
+      };
+    } catch (error) {
+      console.error('❌ Erreur lors de la création du règlement:', error);
+      throw new BadRequestException('Erreur lors de la création du règlement');
+    }
   }
 }

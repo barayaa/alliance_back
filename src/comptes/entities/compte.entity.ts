@@ -27,6 +27,11 @@ export class Compte {
   @OneToMany(() => Depense, (depense) => depense.compte)
   depenses: Depense[];
 
+  //au besoin
+
+  // @OneToMany(() => MouvementCompte, (mouvement) => mouvement.compte)
+  // mouvements: MouvementCompte[];
+
   @Column({ type: 'varchar' })
   date_creation: string;
 

@@ -11,6 +11,10 @@ export class Caisse {
   @OneToMany(() => Depense, (depense) => depense.caisse)
   depenses: Depense[];
 
+  //au besoin
+  // @OneToMany(() => MouvementCaisse, (mouvement) => mouvement.caisse)
+  // mouvements: MouvementCaisse[];
+
   @Column({ type: 'double', default: 0 })
   solde: number;
 }
