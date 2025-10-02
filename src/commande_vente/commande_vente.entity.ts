@@ -161,6 +161,9 @@ export class CommandeVente {
   @Column({ type: 'double' })
   escompte: number;
 
+  @Column({ type: 'varchar', length: 300, nullable: true })
+  annule_par: string;
+
   @OneToMany(() => LignesCommandeVente, (ligne) => ligne.commandeVente)
   lignes: LignesCommandeVente[];
 

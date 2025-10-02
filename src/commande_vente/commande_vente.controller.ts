@@ -201,6 +201,7 @@ export class CommandeVenteController {
     @Param('id', ParseIntPipe) id: number,
     @Body('login') login: string,
   ): Promise<void> {
+    console.log('Login reçu dans le controller:', login); // *** AJOUTE CETTE LIGNE ***
     return this.commandeVenteService.cancelCommandeVente(id, login);
   }
 

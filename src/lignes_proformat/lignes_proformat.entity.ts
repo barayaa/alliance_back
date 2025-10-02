@@ -7,6 +7,7 @@ import {
   JoinColumn,
 } from 'typeorm';
 import { Proformat } from '../proformat/proformat.entity';
+import { Produit } from 'src/produit/produit.entity';
 
 @Entity('lignes_proformat')
 export class LignesProformat {
@@ -70,6 +71,10 @@ export class LignesProformat {
 
   @Column({ type: 'int' })
   statut_proformat: number;
+
+  @ManyToOne(() => Produit)
+  @JoinColumn({ name: 'designation' })
+  produit: Produit;
 
   // @ManyToOne(() => Proformat, (proformat) => proformat.lignes)
   // proformat: Proformat;

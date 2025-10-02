@@ -15,10 +15,18 @@ import { CreateProformatDto } from './dto/create-proformat.dto';
 import { UpdateProformatDto } from './dto/update-proformat.dto';
 import { Proformat } from './proformat.entity';
 import { Response } from 'express';
+import { Auth } from 'src/auth/decorators/auth.decorators';
+import { AuthType } from 'src/auth/enums/auth.types.enum';
 
 @Controller('proformat')
 export class ProformatController {
   constructor(private readonly proformatService: ProformatService) {}
+
+  @Auth(AuthType.None)
+  @Get(':id/pdf')
+  async generatePdf(@Param('id') id: string, @Res() res: Response) {
+    await this.proformatService.generatePdf(+id, res);
+  }
 
   @Get('client/:id_client')
   async findByclient(
@@ -51,14 +59,14 @@ export class ProformatController {
     return this.proformatService.findAllByYear(yearNumber);
   }
 
-  @Get('print/:id')
-  async print(@Param('id') id: string, @Res() res: Response): Promise<void> {
-    const idNumber = parseInt(id, 10);
-    if (isNaN(idNumber)) {
-      throw new BadRequestException('ID invalide');
-    }
-    return this.proformatService.generatePdf(idNumber, res);
-  }
+  // @Get('print/:id')
+  // async print(@Param('id') id: string, @Res() res: Response): Promise<void> {
+  //   const idNumber = parseInt(id, 10);
+  //   if (isNaN(idNumber)) {
+  //     throw new BadRequestException('ID invalide');
+  //   }
+  //   return this.proformatService.generatePdf(idNumber, res);
+  // }
 
   @Get()
   async findAll(

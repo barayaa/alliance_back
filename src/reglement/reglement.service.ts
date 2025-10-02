@@ -521,232 +521,6 @@ export class ReglementService {
     }
   }
 
-  private async debugPDFKit() {
-    console.log('=== DEBUG PDFKIT ===');
-
-    try {
-      // Test 1: require direct
-      const pdfkit1 = require('pdfkit');
-      console.log('require("pdfkit"):', typeof pdfkit1);
-      console.log('pdfkit1 constructor:', typeof pdfkit1);
-
-      // Test 2: require avec .default
-      const pdfkit2 = require('pdfkit').default;
-      console.log('require("pdfkit").default:', typeof pdfkit2);
-
-      // Test 3: Tentative de création
-      if (typeof pdfkit1 === 'function') {
-        console.log('✅ pdfkit1 est une fonction, test de création...');
-        const testDoc = new pdfkit1();
-        console.log('✅ new pdfkit1() réussi');
-        testDoc.end(); // Terminer le test
-      } else {
-        console.log("❌ pdfkit1 n'est pas une fonction");
-      }
-    } catch (error) {
-      console.error('❌ Erreur debug:', error.message);
-    }
-
-    console.log('=== FIN DEBUG ===');
-  }
-  private async generatePaymentReceipt(data: {
-    client: Client;
-    facturesAffectees: PaymentDistributionResult['facturesAffectees'];
-    montant: number;
-    date: string;
-    typeReglement: TypeReglement;
-    caisse: Caisse | null;
-    compte: Compte | null;
-  }): Promise<Buffer> {
-    console.log('🔍 Début génération PDF...');
-
-    // Essayer de récupérer le constructeur PDFDocument
-    let PDFDocConstructor: any = null;
-
-    try {
-      // Méthode 1: require direct
-      PDFDocConstructor = require('pdfkit');
-      console.log('📄 PDFKit trouvé via require:', typeof PDFDocConstructor);
-    } catch (e) {
-      console.log('⚠️ require("pdfkit") échoué:', e.message);
-
-      try {
-        // Méthode 2: avec .default
-        PDFDocConstructor = require('pdfkit').default;
-        console.log(
-          '📄 PDFKit trouvé via require.default:',
-          typeof PDFDocConstructor,
-        );
-      } catch (e2) {
-        console.log('⚠️ require("pdfkit").default échoué:', e2.message);
-
-        try {
-          // Méthode 3: import dynamique
-          const pdfModule = await import('pdfkit');
-          PDFDocConstructor = pdfModule.default || pdfModule;
-          console.log(
-            '📄 PDFKit trouvé via import dynamique:',
-            typeof PDFDocConstructor,
-          );
-        } catch (e3) {
-          console.log('⚠️ import dynamique échoué:', e3.message);
-        }
-      }
-    }
-
-    // Vérifier si on a un constructeur valide
-    if (typeof PDFDocConstructor !== 'function') {
-      console.error('❌ Impossible de trouver le constructeur PDFDocument');
-      console.error('Type trouvé:', typeof PDFDocConstructor);
-      console.error('Valeur:', PDFDocConstructor);
-
-      // Retourner un reçu texte simple en fallback
-      return this.generateSimpleTextReceipt(data);
-    }
-
-    console.log('✅ Constructeur PDFDocument trouvé, création du document...');
-
-    // Créer le document PDF
-    const doc = new PDFDocConstructor({
-      size: 'A4',
-      margin: 50,
-      info: {
-        Title: 'Reçu de Paiement AllPharma',
-        Author: 'AllPharma',
-        Subject: `Reçu client ${data.client.id_client}`,
-        CreationDate: new Date(),
-      },
-    });
-
-    return new Promise((resolve, reject) => {
-      const buffers: Buffer[] = [];
-
-      doc.on('data', (chunk: Buffer) => {
-        buffers.push(chunk);
-      });
-
-      doc.on('end', () => {
-        try {
-          const pdfBuffer = Buffer.concat(buffers);
-          console.log(
-            `✅ PDF généré avec succès. Taille: ${pdfBuffer.length} bytes`,
-          );
-          resolve(pdfBuffer);
-        } catch (error) {
-          console.error('❌ Erreur concaténation buffers:', error);
-          reject(error);
-        }
-      });
-
-      doc.on('error', (error) => {
-        console.error('❌ Erreur document PDF:', error);
-        reject(error);
-      });
-
-      try {
-        // Contenu du PDF (version simplifiée pour éviter les erreurs)
-        doc.fontSize(20).text('REÇU DE PAIEMENT', { align: 'center' });
-        doc.moveDown();
-
-        // Numéro et date
-        const receiptNumber = `RCP-${Date.now()}`;
-        doc
-          .fontSize(12)
-          .text(`Numéro: ${receiptNumber}`)
-          .text(`Date: ${data.date}`)
-          .moveDown();
-
-        // Client
-        doc.fontSize(14).text('CLIENT:', { underline: true });
-        doc
-          .fontSize(12)
-          .text(`ID: ${data.client.id_client}`)
-          .text(`Nom: ${data.client.nom || 'N/A'}`)
-          .moveDown();
-
-        // Paiement
-        doc.fontSize(14).text('PAIEMENT:', { underline: true });
-        doc
-          .fontSize(12)
-          .text(`Montant: ${data.montant.toLocaleString()} FCFA`)
-          .text(
-            `Type: ${this.getTypeReglementLabel(data.typeReglement.type_reglement)}`,
-          )
-          .moveDown();
-
-        // Factures
-        if (data.facturesAffectees && data.facturesAffectees.length > 0) {
-          doc.fontSize(14).text('FACTURES RÉGLÉES:', { underline: true });
-          doc.fontSize(10);
-
-          data.facturesAffectees.forEach((facture) => {
-            doc.text(
-              `• Facture ${facture.id_commande_vente}: ${facture.montant_paye_actuel.toLocaleString()} FCFA`,
-            );
-          });
-          doc.moveDown();
-        }
-
-        // Pied de page
-        doc
-          .fontSize(10)
-          .text('Merci pour votre paiement!', { align: 'center' })
-          .text('Généré par AllPharma', { align: 'center' });
-
-        console.log('📝 Contenu PDF ajouté, finalisation...');
-        doc.end();
-      } catch (error) {
-        console.error('❌ Erreur création contenu PDF:', error);
-        reject(error);
-      }
-    });
-  }
-
-  private generateSimpleTextReceipt(data: any): Buffer {
-    console.log('📝 Génération reçu texte de fallback...');
-
-    const receiptContent = `
-===============================================
-              REÇU DE PAIEMENT
-===============================================
-
-Numéro: RCP-${Date.now()}
-Date: ${data.date}
-
------------------------------------------------
-CLIENT:
------------------------------------------------
-ID: ${data.client.id_client}
-Nom: ${data.client.nom || 'N/A'}
-
------------------------------------------------
-PAIEMENT:
------------------------------------------------
-Montant: ${data.montant.toLocaleString()} FCFA
-Type: ${this.getTypeReglementLabel(data.typeReglement.type_reglement)}
-
-${data.caisse ? `Caisse: ${data.caisse.nom || data.caisse.id_caisse}\n` : ''}${data.compte ? `Compte: ${data.compte.numero_compte || data.compte.id_compte}\n` : ''}
------------------------------------------------
-FACTURES RÉGLÉES:
------------------------------------------------
-${
-  data.facturesAffectees
-    ?.map(
-      (f) =>
-        `• Facture ${f.id_commande_vente}: ${f.montant_paye_actuel.toLocaleString()} FCFA${f.reglee ? ' (RÉGLÉE)' : ' (PARTIELLE)'}`,
-    )
-    .join('\n') || 'Paiement en avance (aucune facture spécifique)'
-}
-
-===============================================
-         Merci pour votre paiement!
-              Généré par AllPharma
-===============================================
-`;
-
-    return Buffer.from(receiptContent, 'utf-8');
-  }
-
   private getTypeReglementLabel(type: string): string {
     const labels = {
       E: 'Espèces',
@@ -757,202 +531,536 @@ ${
     return labels[type] || type;
   }
 
-  //ancienne methode
-  // async createReglement(
-  //   createReglementDto: CreateReglementDto,
-  // ): Promise<PaymentDistributionResult> {
-  //   const {
-  //     id_client,
-  //     montant,
-  //     date,
-  //     id_type_reglement,
-  //     id_caisse,
-  //     id_compte,
-  //   } = createReglementDto;
+  private async generatePaymentReceipt(data: {
+    client: Client;
+    facturesAffectees: PaymentDistributionResult['facturesAffectees'];
+    montant: number;
+    date: string;
+    typeReglement: TypeReglement;
+    caisse: Caisse | null;
+    compte: Compte | null;
+  }): Promise<Buffer> {
+    return new Promise(async (resolve, reject) => {
+      try {
+        const PDFDocument = require('pdfkit');
+        const doc = new PDFDocument({ size: 'A4', margin: 40 });
 
-  //   if (!id_client || montant <= 0 || !date || !id_type_reglement) {
-  //     throw new BadRequestException(
-  //       'id_client, montant positif, date et id_type_reglement sont requis',
-  //     );
-  //   }
+        const buffers: Buffer[] = [];
+        doc.on('data', buffers.push.bind(buffers));
+        doc.on('end', () => resolve(Buffer.concat(buffers)));
+        doc.on('error', reject);
 
-  //   const client = await this.clientRepository.findOne({
-  //     where: { id_client },
-  //   });
-  //   if (!client) {
-  //     throw new NotFoundException(`Client avec l'ID ${id_client} non trouvé`);
-  //   }
+        // Constantes
+        const PAGE_WIDTH = 595.28;
+        const MARGINS = 40;
+        const HEADER_HEIGHT = 80;
 
-  //   const typeReglement = await this.typeReglementRepository.findOne({
-  //     where: { id_type_reglement },
-  //   });
-  //   if (!typeReglement) {
-  //     throw new NotFoundException(
-  //       `Type de règlement avec l'ID ${id_type_reglement} non trouvé`,
-  //     );
-  //   }
+        // === EN-TÊTE ===
+        const headerTop = 40;
+        const sectionWidth = (PAGE_WIDTH - 2 * MARGINS) / 3;
 
-  //   if (typeReglement.type_reglement === 'E' && !id_caisse) {
-  //     throw new BadRequestException(
-  //       'id_caisse est requis pour un règlement en espèces',
-  //     );
-  //   }
-  //   if (['D', 'V'].includes(typeReglement.type_reglement) && !id_compte) {
-  //     throw new BadRequestException(
-  //       'id_compte est requis pour un règlement par chèque ou virement',
-  //     );
-  //   }
+        // Section 1: Alliance Pharma
+        doc
+          .rect(MARGINS, headerTop, sectionWidth, HEADER_HEIGHT)
+          .strokeColor('black')
+          .stroke();
+        doc.fontSize(10).font('Helvetica-Bold');
+        doc.text('ALLIANCE PHARMA', MARGINS + 10, headerTop + 10, {
+          width: sectionWidth - 20,
+          align: 'center',
+        });
+        doc.fontSize(8).font('Helvetica');
+        doc.text('Tel: 80130610', MARGINS + 10, headerTop + 25, {
+          width: sectionWidth - 20,
+          align: 'center',
+        });
+        doc.text(
+          'RCCM: NE/NIM/01/2024/B14/00004',
+          MARGINS + 10,
+          headerTop + 35,
+          { width: sectionWidth - 20, align: 'center' },
+        );
+        doc.text('NIF: 37364/R', MARGINS + 10, headerTop + 45, {
+          width: sectionWidth - 20,
+          align: 'center',
+        });
+        doc.text('BP: 11807', MARGINS + 10, headerTop + 55, {
+          width: sectionWidth - 20,
+          align: 'center',
+        });
+        doc.text('Adresse: NIAMEY', MARGINS + 10, headerTop + 65, {
+          width: sectionWidth - 20,
+          align: 'center',
+        });
 
-  //   let caisse: Caisse | null = null;
-  //   let compte: Compte | null = null;
+        // Section 2: Logo
+        doc
+          .rect(MARGINS + sectionWidth, headerTop, sectionWidth, HEADER_HEIGHT)
+          .strokeColor('black')
+          .stroke();
+        try {
+          doc.image(
+            'src/uploads/rmlogo.png',
+            MARGINS + sectionWidth + (sectionWidth - 90) / 2,
+            headerTop + 10,
+            { width: 90 },
+          );
+        } catch (error) {
+          doc
+            .fontSize(10)
+            .font('Helvetica-Bold')
+            .text('LOGO', MARGINS + sectionWidth + 10, headerTop + 40, {
+              width: sectionWidth - 20,
+              align: 'center',
+            });
+        }
 
-  //   if (id_caisse) {
-  //     caisse = await this.caisseRepository.findOne({ where: { id_caisse } });
-  //     if (!caisse) {
-  //       throw new NotFoundException(
-  //         `Caisse avec l'ID ${id_caisse} non trouvée`,
-  //       );
-  //     }
-  //   }
-  //   if (id_compte) {
-  //     compte = await this.compteRepository.findOne({ where: { id_compte } });
-  //     if (!compte) {
-  //       throw new NotFoundException(`Compte avec l'ID ${id_compte} non trouvé`);
-  //     }
-  //   }
+        // Section 3: REÇU DE PAIEMENT
+        doc
+          .rect(
+            MARGINS + 2 * sectionWidth,
+            headerTop,
+            sectionWidth,
+            HEADER_HEIGHT,
+          )
+          .strokeColor('black')
+          .stroke();
+        doc.fontSize(10).font('Helvetica-Bold').fillColor('#009933');
+        doc.text(
+          'REÇU DE PAIEMENT',
+          MARGINS + 2 * sectionWidth + 10,
+          headerTop + 10,
+          {
+            width: sectionWidth - 20,
+            align: 'center',
+          },
+        );
+        doc.fillColor('black');
 
-  //   // Récupérer les factures non réglées ou partiellement réglées du client
-  //   const factures = await this.commandeVenteRepository
-  //     .createQueryBuilder('commande')
-  //     .where('commande.id_client = :id_client', { id_client })
-  //     .andWhere('(commande.reglee = 0 OR commande.montant_restant > 0)')
-  //     .orderBy('commande.date_commande_vente', 'ASC')
-  //     .getMany();
+        const receiptNumber = `RCP-${Date.now()}`;
+        doc.fontSize(8).font('Helvetica');
+        doc.text(
+          `N° ${receiptNumber}`,
+          MARGINS + 2 * sectionWidth + 10,
+          headerTop + 30,
+          {
+            width: sectionWidth - 20,
+            align: 'center',
+          },
+        );
+        doc.text(
+          `Date: ${new Date(data.date).toLocaleDateString('fr-FR')}`,
+          MARGINS + 2 * sectionWidth + 10,
+          headerTop + 45,
+          {
+            width: sectionWidth - 20,
+            align: 'center',
+          },
+        );
 
-  //   console.log(
-  //     `Factures récupérées pour le client ${id_client}: ${factures.length}`,
-  //   );
+        // Séparateurs verticaux
+        doc
+          .moveTo(MARGINS + sectionWidth, headerTop)
+          .lineTo(MARGINS + sectionWidth, headerTop + HEADER_HEIGHT)
+          .stroke();
+        doc
+          .moveTo(MARGINS + 2 * sectionWidth, headerTop)
+          .lineTo(MARGINS + 2 * sectionWidth, headerTop + HEADER_HEIGHT)
+          .stroke();
 
-  //   let montantRestant = montant;
-  //   const facturesAffectees: PaymentDistributionResult['facturesAffectees'] =
-  //     [];
-  //   const reglementsToSave: Reglement[] = [];
+        // Ligne de séparation
+        const separatorY = headerTop + HEADER_HEIGHT + 10;
+        doc
+          .moveTo(MARGINS, separatorY)
+          .lineTo(PAGE_WIDTH - MARGINS, separatorY)
+          .stroke();
 
-  //   // Répartir le montant sur les factures
-  //   let montantAppliqueAuxFactures = 0;
-  //   for (const facture of factures) {
-  //     if (montantRestant <= 0) break;
+        // === INFORMATIONS CLIENT ===
+        const infoTop = separatorY + 15;
+        doc.fontSize(10).font('Helvetica-Bold');
+        doc.text('INFORMATIONS CLIENT', MARGINS, infoTop);
 
-  //     const montantDu = facture.montant_total - (facture.montant_paye || 0);
-  //     if (montantDu <= 0) {
-  //       console.log(
-  //         `Facture ${facture.id_commande_vente} déjà réglée, ignorée`,
-  //       );
-  //       continue;
-  //     }
+        doc.fontSize(8).font('Helvetica');
+        const clientInfoTop = infoTop + 20;
+        doc.text(
+          `Client: ${this.sanitize(data.client.nom || 'N/A')}`,
+          MARGINS,
+          clientInfoTop,
+        );
+        doc.text(
+          `NIF: ${this.sanitize(data.client.nif || 'N/A')}`,
+          MARGINS,
+          clientInfoTop + 12,
+        );
+        doc.text(
+          `Adresse: ${this.sanitize(data.client.adresse || 'N/A')}`,
+          MARGINS,
+          clientInfoTop + 24,
+        );
+        doc.text(
+          `Téléphone: ${this.sanitize(data.client.telephone || 'N/A')}`,
+          MARGINS,
+          clientInfoTop + 36,
+        );
 
-  //     const montantAffecte = Math.min(montantRestant, montantDu);
-  //     montantRestant -= montantAffecte;
-  //     montantAppliqueAuxFactures += montantAffecte;
+        // === DÉTAILS DU PAIEMENT ===
+        const paymentInfoX = MARGINS + 300;
+        doc.fontSize(10).font('Helvetica-Bold');
+        doc.text('DÉTAILS DU PAIEMENT', paymentInfoX, infoTop);
 
-  //     // Mettre à jour la facture
-  //     facture.montant_paye = (facture.montant_paye || 0) + montantAffecte;
-  //     facture.montant_restant = facture.montant_total - facture.montant_paye;
-  //     facture.reglee = facture.montant_restant <= 0 ? 1 : 0;
+        doc.fontSize(8).font('Helvetica');
+        doc.text(
+          `Montant payé: ${this.formatCurrency(data.montant)} CFA`,
+          paymentInfoX,
+          clientInfoTop,
+        );
+        doc.text(
+          `Mode: ${this.getTypeReglementLabel(data.typeReglement.type_reglement)}`,
+          paymentInfoX,
+          clientInfoTop + 12,
+        );
 
-  //     // Créer un règlement
-  //     const reglement = new Reglement();
-  //     reglement.id_client = id_client;
-  //     reglement.client = client;
-  //     reglement.montant = montantAffecte;
-  //     reglement.date = date;
-  //     reglement.id_commande_vente = facture.id_commande_vente.toString();
-  //     reglement.commandeVente = facture;
-  //     reglement.id_type_reglement = id_type_reglement;
-  //     reglement.typeReglement = typeReglement;
-  //     reglement.id_caisse = id_caisse || null;
-  //     reglement.caisse = caisse || null;
-  //     reglement.id_compte = id_compte || null;
-  //     reglement.compte = compte || null;
+        if (data.caisse) {
+          doc.text(
+            `Caisse: ${this.sanitize(data.caisse.nom || 'N/A')}`,
+            paymentInfoX,
+            clientInfoTop + 24,
+          );
+        }
+        if (data.compte) {
+          doc.text(
+            `Compte: ${this.sanitize(data.compte.numero_compte || 'N/A')}`,
+            paymentInfoX,
+            clientInfoTop + 24,
+          );
+        }
 
-  //     reglementsToSave.push(reglement);
+        // === TABLEAU DES FACTURES RÉGLÉES ===
+        const tableTop = clientInfoTop + 60;
+        const tableLeft = MARGINS;
+        const columnWidths = [100, 100, 100, 100, 110];
 
-  //     // Ajouter au récapitulatif
-  //     facturesAffectees.push({
-  //       id_commande_vente: facture.id_commande_vente.toString(),
-  //       montant_total: facture.montant_total,
-  //       montant_paye_avant: (facture.montant_paye || 0) - montantAffecte,
-  //       montant_paye_actuel: montantAffecte,
-  //       montant_restant: facture.montant_restant,
-  //       reglee: facture.reglee === 1,
-  //     });
+        // En-tête du tableau
+        doc.fontSize(9).font('Helvetica-Bold');
+        let x = tableLeft;
+        const headers = [
+          'N° Facture',
+          'Montant Total',
+          'Payé Avant',
+          'Payé Maintenant',
+          'Restant',
+        ];
 
-  //     console.log(
-  //       `Facture ${facture.id_commande_vente} mise à jour: montant_paye=${facture.montant_paye}, montant_restant=${facture.montant_restant}`,
-  //     );
-  //   }
+        headers.forEach((header, i) => {
+          doc.text(header, x, tableTop, {
+            width: columnWidths[i],
+            align: 'center',
+          });
+          x += columnWidths[i];
+        });
 
-  //   // Mettre à jour le solde du client
-  //   client.solde = (client.solde || 0) - montantAppliqueAuxFactures;
-  //   if (client.solde < 0) {
-  //     client.solde = 0; // Éviter un solde négatif
-  //   }
+        doc
+          .moveTo(tableLeft, tableTop + 20)
+          .lineTo(
+            tableLeft + columnWidths.reduce((a, b) => a + b, 0),
+            tableTop + 20,
+          )
+          .stroke();
 
-  //   // Stocker le surplus comme avance
-  //   if (montantRestant > 0) {
-  //     client.avance = (client.avance || 0) + montantRestant;
-  //     console.log(
-  //       `Avance mise à jour pour le client ${id_client}: ${client.avance}`,
-  //     );
-  //   }
+        // Lignes du tableau
+        let y = tableTop + 25;
+        doc.fontSize(8).font('Helvetica');
 
-  //   // Mettre à jour le solde de la caisse ou du compte
-  //   if (caisse) {
-  //     caisse.solde = (caisse.solde || 0) + montant;
-  //   }
-  //   if (compte) {
-  //     compte.solde = (compte.solde || 0) + montant;
-  //   }
+        data.facturesAffectees.forEach((facture, index) => {
+          if (y > 700) {
+            doc.addPage();
+            y = 40;
+          }
 
-  //   // Sauvegarder toutes les modifications dans une transaction
-  //   try {
-  //     await this.dataSource.transaction(async (transactionalEntityManager) => {
-  //       if (caisse) {
-  //         await transactionalEntityManager.save(Caisse, caisse);
-  //       }
-  //       if (compte) {
-  //         await transactionalEntityManager.save(Compte, compte);
-  //       }
-  //       await transactionalEntityManager.save(Client, client);
-  //       await transactionalEntityManager.save(CommandeVente, factures);
-  //       await transactionalEntityManager.save(Reglement, reglementsToSave);
-  //     });
+          x = tableLeft;
 
-  //     // Logs pour le débogage
-  //     if (caisse) {
-  //       console.log(
-  //         `Solde de la caisse ${id_caisse} mis à jour: ${caisse.solde}`,
-  //       );
-  //     }
-  //     if (compte) {
-  //       console.log(`Solde du compte ${id_compte} mis à jour: ${compte.solde}`);
-  //     }
-  //     console.log(
-  //       `Client ${id_client} mis à jour: solde=${client.solde}, avance=${client.avance}`,
-  //     );
-  //     console.log(
-  //       'Règlements créés et factures mises à jour:',
-  //       JSON.stringify(facturesAffectees, null, 2),
-  //     );
+          // Bordure verticale de début
+          doc
+            .moveTo(tableLeft, y)
+            .lineTo(tableLeft, y + 20)
+            .stroke();
 
-  //     return {
-  //       facturesAffectees,
-  //       avance: client.avance,
-  //       montantRestant,
-  //     };
-  //   } catch (error) {
-  //     console.error('Erreur lors de la création du règlement:', error);
-  //     throw new BadRequestException('Erreur lors de la création du règlement');
-  //   }
+          // N° Facture
+          doc.text(facture.id_commande_vente, x + 5, y + 5, {
+            width: columnWidths[0] - 10,
+            align: 'center',
+          });
+          x += columnWidths[0];
+          doc
+            .moveTo(x, y)
+            .lineTo(x, y + 20)
+            .stroke();
+
+          // Montant Total
+          doc.text(this.formatCurrency(facture.montant_total), x + 5, y + 5, {
+            width: columnWidths[1] - 10,
+            align: 'right',
+          });
+          x += columnWidths[1];
+          doc
+            .moveTo(x, y)
+            .lineTo(x, y + 20)
+            .stroke();
+
+          // Payé Avant
+          doc.text(
+            this.formatCurrency(facture.montant_paye_avant),
+            x + 5,
+            y + 5,
+            { width: columnWidths[2] - 10, align: 'right' },
+          );
+          x += columnWidths[2];
+          doc
+            .moveTo(x, y)
+            .lineTo(x, y + 20)
+            .stroke();
+
+          // Payé Maintenant (en gras vert)
+          doc.font('Helvetica-Bold').fillColor('#009933');
+          doc.text(
+            this.formatCurrency(facture.montant_paye_actuel),
+            x + 5,
+            y + 5,
+            { width: columnWidths[3] - 10, align: 'right' },
+          );
+          doc.font('Helvetica').fillColor('black');
+          x += columnWidths[3];
+          doc
+            .moveTo(x, y)
+            .lineTo(x, y + 20)
+            .stroke();
+
+          // Restant
+          const color = facture.montant_restant <= 0 ? '#009933' : '#000000';
+          doc.fillColor(color);
+          doc.text(this.formatCurrency(facture.montant_restant), x + 5, y + 5, {
+            width: columnWidths[4] - 10,
+            align: 'right',
+          });
+          doc.fillColor('black');
+          x += columnWidths[4];
+          doc
+            .moveTo(x, y)
+            .lineTo(x, y + 20)
+            .stroke();
+
+          // Bordure horizontale
+          doc
+            .moveTo(tableLeft, y + 20)
+            .lineTo(tableLeft + columnWidths.reduce((a, b) => a + b, 0), y + 20)
+            .stroke();
+
+          y += 20;
+        });
+
+        // === RÉSUMÉ ===
+        const summaryTop = y + 30;
+        doc.fontSize(12).font('Helvetica-Bold').fillColor('#009933');
+        doc.text('RÉSUMÉ DU PAIEMENT', MARGINS, summaryTop);
+        doc.fillColor('black');
+
+        doc
+          .moveTo(MARGINS, summaryTop + 15)
+          .lineTo(PAGE_WIDTH - MARGINS, summaryTop + 15)
+          .stroke();
+
+        let currentY = summaryTop + 25;
+        doc.fontSize(9).font('Helvetica');
+
+        // Montant total payé
+        doc.text('Montant total payé:', MARGINS, currentY);
+        doc.font('Helvetica-Bold').fillColor('#009933');
+        doc.text(
+          `${this.formatCurrency(data.montant)} CFA`,
+          PAGE_WIDTH - MARGINS - 100,
+          currentY,
+          { align: 'right' },
+        );
+        doc.font('Helvetica').fillColor('black');
+        currentY += 20;
+
+        // Nombre de factures réglées
+        const facturesComplete = data.facturesAffectees.filter(
+          (f) => f.reglee,
+        ).length;
+        const facturesPartielles = data.facturesAffectees.filter(
+          (f) => !f.reglee,
+        ).length;
+
+        doc.text(`Factures entièrement réglées:`, MARGINS, currentY);
+        doc.text(`${facturesComplete}`, PAGE_WIDTH - MARGINS - 100, currentY, {
+          align: 'right',
+        });
+        currentY += 15;
+
+        doc.text(`Factures partiellement réglées:`, MARGINS, currentY);
+        doc.text(
+          `${facturesPartielles}`,
+          PAGE_WIDTH - MARGINS - 100,
+          currentY,
+          { align: 'right' },
+        );
+        currentY += 25;
+
+        // Ligne de séparation
+        doc
+          .moveTo(MARGINS, currentY)
+          .lineTo(PAGE_WIDTH - MARGINS, currentY)
+          .stroke();
+        currentY += 15;
+
+        // Conversion en lettres
+        doc.fontSize(9).font('Helvetica-Bold');
+        doc.text('Arrêté le présent reçu à la somme de :', MARGINS, currentY);
+        currentY += 15;
+        doc.fontSize(9).font('Helvetica');
+        doc.text(
+          `${this.numberToWordsFr(Math.round(data.montant))} francs CFA`,
+          MARGINS,
+          currentY,
+          {
+            width: PAGE_WIDTH - 2 * MARGINS,
+            align: 'center',
+          },
+        );
+        currentY += 30;
+
+        // === SIGNATURE ===
+        doc.fontSize(9).font('Helvetica-Bold');
+        doc.text('Le Caissier', MARGINS, currentY, { underline: true });
+        doc.text('Le Client', MARGINS + 300, currentY, { underline: true });
+
+        // Lignes pour signatures
+        currentY += 40;
+        doc
+          .moveTo(MARGINS, currentY)
+          .lineTo(MARGINS + 150, currentY)
+          .stroke();
+        doc
+          .moveTo(MARGINS + 300, currentY)
+          .lineTo(MARGINS + 450, currentY)
+          .stroke();
+
+        // === PIED DE PAGE ===
+        const footerY = 750;
+        doc.fontSize(8).font('Helvetica-Oblique').fillColor('#666666');
+        doc.text('Merci pour votre confiance', MARGINS, footerY, {
+          width: PAGE_WIDTH - 2 * MARGINS,
+          align: 'center',
+        });
+        doc.text('Ce reçu fait foi de paiement', MARGINS, footerY + 12, {
+          width: PAGE_WIDTH - 2 * MARGINS,
+          align: 'center',
+        });
+        doc.fillColor('black');
+
+        // Ligne finale
+        doc
+          .moveTo(MARGINS, footerY - 10)
+          .lineTo(PAGE_WIDTH - MARGINS, footerY - 10)
+          .stroke();
+
+        doc.end();
+      } catch (error) {
+        console.error('Erreur génération PDF reçu:', error);
+        reject(error);
+      }
+    });
+  }
+
+  // Méthodes utilitaires
+  private sanitize(str: string): string {
+    if (!str) return 'N/A';
+    return str.replace(/[^\x20-\x7E]/g, '').substring(0, 50);
+  }
+
+  private formatCurrency(amount: number): string {
+    return Math.round(amount)
+      .toString()
+      .replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  }
+
+  // private getTypeReglementLabel(type: string): string {
+  //   const labels: { [key: string]: string } = {
+  //     E: 'Espèces',
+  //     D: 'Chèque',
+  //     V: 'Virement',
+  //     C: 'Carte bancaire',
+  //   };
+  //   return labels[type] || type;
   // }
+
+  private numberToWordsFr(num: number): string {
+    if (num === 0) return 'zéro';
+
+    const units = [
+      '',
+      'un',
+      'deux',
+      'trois',
+      'quatre',
+      'cinq',
+      'six',
+      'sept',
+      'huit',
+      'neuf',
+    ];
+    const teens = [
+      'dix',
+      'onze',
+      'douze',
+      'treize',
+      'quatorze',
+      'quinze',
+      'seize',
+      'dix-sept',
+      'dix-huit',
+      'dix-neuf',
+    ];
+    const tens = [
+      '',
+      '',
+      'vingt',
+      'trente',
+      'quarante',
+      'cinquante',
+      'soixante',
+      'soixante-dix',
+      'quatre-vingt',
+      'quatre-vingt-dix',
+    ];
+
+    if (num < 10) return units[num];
+    if (num < 20) return teens[num - 10];
+    if (num < 100) {
+      const ten = Math.floor(num / 10);
+      const unit = num % 10;
+      if (unit === 0) return tens[ten];
+      if (ten === 7 || ten === 9) {
+        return tens[ten - 1] + '-' + teens[unit];
+      }
+      return tens[ten] + (unit === 1 && ten !== 8 ? '-et-' : '-') + units[unit];
+    }
+
+    // Pour les grands nombres, simplification
+    if (num < 1000) {
+      const hundred = Math.floor(num / 100);
+      const rest = num % 100;
+      let result = hundred === 1 ? 'cent' : units[hundred] + ' cent';
+      if (rest > 0) result += ' ' + this.numberToWordsFr(rest);
+      return result;
+    }
+
+    const thousand = Math.floor(num / 1000);
+    const rest = num % 1000;
+    let result =
+      thousand === 1 ? 'mille' : this.numberToWordsFr(thousand) + ' mille';
+    if (rest > 0) result += ' ' + this.numberToWordsFr(rest);
+    return result;
+  }
 }

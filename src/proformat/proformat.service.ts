@@ -19,8 +19,100 @@ import { Isb } from 'src/isb/isb.entity';
 import { LignesCommandeVenteService } from 'src/lignes_commande_vente/lignes_commande_vente.service';
 import { CaptureStockService } from 'src/capture_stock/capture_stock.service';
 import { CommandeVente } from 'src/commande_vente/commande_vente.entity';
+import { CreateLignesCommandeVenteDto } from 'src/lignes_commande_vente/dto/create-lignes_commande_vente.dto';
+
+function sanitizeString(str: string | null | undefined): string {
+  if (!str) return 'N/A';
+  return str.replace(/[^\w\s-]/g, '').trim();
+}
+
+function formatDate(date: string | Date | null | undefined): string {
+  if (!date) {
+    console.log('Date vide:', date);
+    return 'N/A';
+  }
+
+  // Si c'est déjà un objet Date, formater directement
+  if (date instanceof Date) {
+    return date.toLocaleDateString('fr-FR'); // JJ/MM/AAAA
+  }
+
+  // Convertir en chaîne si ce n'est pas déjà une chaîne
+  const dateStr = String(date).trim();
+  console.log('Date brute:', dateStr); // Log pour déboguer
+
+  // Essayer avec new Date
+  try {
+    const parsedDate = new Date(dateStr);
+    if (!isNaN(parsedDate.getTime())) {
+      return parsedDate.toLocaleDateString('fr-FR'); // JJ/MM/AAAA
+    }
+  } catch {
+    console.log('Échec new Date pour:', dateStr);
+  }
+
+  // Essayer de parser manuellement les formats courants
+  // Format YYYY-MM-DD
+  const ymdMatch = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (ymdMatch) {
+    try {
+      const year = parseInt(ymdMatch[1], 10);
+      const month = parseInt(ymdMatch[2], 10) - 1; // Mois de 0 à 11
+      const day = parseInt(ymdMatch[3], 10);
+      const parsedDate = new Date(year, month, day);
+      if (!isNaN(parsedDate.getTime())) {
+        return parsedDate.toLocaleDateString('fr-FR'); // JJ/MM/AAAA
+      }
+    } catch {
+      console.log('Échec parsing YYYY-MM-DD pour:', dateStr);
+    }
+  }
+
+  // Format DD/MM/YYYY
+  const dmyMatch = dateStr.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (dmyMatch) {
+    try {
+      const day = parseInt(dmyMatch[1], 10);
+      const month = parseInt(dmyMatch[2], 10) - 1;
+      const year = parseInt(dmyMatch[3], 10);
+      const parsedDate = new Date(year, month, day);
+      if (!isNaN(parsedDate.getTime())) {
+        return parsedDate.toLocaleDateString('fr-FR'); // JJ/MM/AAAA
+      }
+    } catch {
+      console.log('Échec parsing DD/MM/YYYY pour:', dateStr);
+    }
+  }
+
+  // Format YYYY/MM/DD
+  const ymdSlashMatch = dateStr.match(/^(\d{4})\/(\d{2})\/(\d{2})$/);
+  if (ymdSlashMatch) {
+    try {
+      const year = parseInt(ymdSlashMatch[1], 10);
+      const month = parseInt(ymdSlashMatch[2], 10) - 1;
+      const day = parseInt(ymdSlashMatch[3], 10);
+      const parsedDate = new Date(year, month, day);
+      if (!isNaN(parsedDate.getTime())) {
+        return parsedDate.toLocaleDateString('fr-FR'); // JJ/MM/AAAA
+      }
+    } catch {
+      console.log('Échec parsing YYYY/MM/DD pour:', dateStr);
+    }
+  }
+
+  // Si aucun format ne fonctionne
+  console.log('Format de date non reconnu:', dateStr);
+  return 'N/A';
+}
+
 @Injectable()
 export class ProformatService {
+  private readonly VALID_TYPES = ['full', 'simple', 'bl', 'bp'] as const;
+  private readonly MARGINS = 40;
+  private readonly PAGE_WIDTH = 595.28; // A4 width
+  private readonly HEADER_HEIGHT = 80;
+  private readonly ROW_HEIGHT = 20;
+  private readonly MAX_Y = 750;
   constructor(
     @InjectRepository(Proformat)
     private proformatRepository: Repository<Proformat>,
@@ -105,10 +197,11 @@ export class ProformatService {
   }
 
   async create(dto: CreateProformatDto): Promise<Proformat> {
-    console.log(dto);
+    console.log('Payload Proformat reçu:', JSON.stringify(dto, null, 2));
 
     return this.proformatRepository.manager.transaction(async (manager) => {
       try {
+        // Valider le client
         const client = await manager.findOneBy(Client, {
           id_client: dto.id_client,
         });
@@ -118,6 +211,30 @@ export class ProformatService {
           );
         }
 
+        // Gérer l'ISB selon le type_isb
+        let isbRate = 0;
+        if (dto.type_isb) {
+          const isbs = await manager.find(Isb, { select: ['isb', 'taux'] });
+          const isbRecord = isbs.find((isb) => isb.isb === dto.type_isb);
+          if (isbRecord) {
+            isbRate = parseFloat(isbRecord.taux) || 0;
+          } else {
+            const isbMapping: { [key: string]: number } = {
+              '0%': 0,
+              '2%': 0.02,
+              '5%': 0.05,
+            };
+            isbRate = isbMapping[dto.type_isb] || 0.02; // 2% par défaut
+          }
+        }
+        console.log('Taux ISB appliqué:', isbRate, 'pour type:', dto.type_isb);
+
+        // TVA : utiliser celle fournie ou 0
+        const tvaCommande =
+          dto.tva != null && !isNaN(dto.tva) && dto.tva >= 0 ? dto.tva : 0;
+        console.log('TVA générale appliquée:', tvaCommande, '%');
+
+        // Génération numéro facture proforma
         const currentYear = new Date().getFullYear();
         const lastProformat = await manager.findOne(Proformat, {
           where: {
@@ -129,63 +246,23 @@ export class ProformatService {
         const numero_seq = lastProformat ? lastProformat.numero_seq + 1 : 1;
         const numero_facture_certifiee = `${numero_seq.toString().padStart(4, '0')}-${currentYear}`;
 
-        let subtotal = 0;
-        let montant_tva = 0;
-        let isb_total = 0;
-        const lignesToSave = [];
-
-        for (const ligne of dto.lignes) {
-          const produit = await manager.findOneBy(Produit, {
-            id_produit: ligne.designation,
-          });
-          if (!produit) {
-            throw new BadRequestException(
-              `Produit avec id ${ligne.designation} non trouvé`,
-            );
-          }
-          const prix_vente = ligne.prix_vente || produit.prix_unitaire;
-          const remise = ligne.remise || 0;
-          const montant_ligne = prix_vente * ligne.quantite * (1 - remise);
-          const taux_tva = ligne.taux_tva || produit.taux_tva || 0;
-          const montant_tva_ligne = montant_ligne * (taux_tva / 100);
-          const isb_ligne = ligne.isb_ligne || montant_ligne * 0.02; // ISB par défaut à 2% si non spécifié
-          subtotal += montant_ligne;
-          montant_tva += montant_tva_ligne;
-          isb_total += isb_ligne;
-
-          lignesToSave.push({
-            id_commande_vente: numero_facture_certifiee, // Temporaire, corrigé plus bas
-            designation: ligne.designation,
-            prix_vente,
-            remise,
-            description_remise: ligne.description_remise || '',
-            prix_vente_avant_remise: (
-              ligne.prix_vente_avant_remise || prix_vente
-            ).toString(),
-            quantite: ligne.quantite,
-            montant: montant_ligne,
-            group_tva: ligne.group_tva || produit.group_tva || '',
-            etiquette_tva: ligne.etiquette_tva || produit.etiquette_tva || '',
-            taux_tva,
-            montant_tva: montant_tva_ligne,
-            isb_ligne,
-            date: dto.date_commande_vente,
-            stock_avant: produit.stock_courant,
-            stock_apres: produit.stock_courant, // Pas de modification du stock pour proforma
-            retour: 0,
-            statut_proformat: 0,
-          });
+        // Vérifier unicité
+        const existingProformat = await manager.findOne(Proformat, {
+          where: { numero_facture_certifiee },
+        });
+        if (existingProformat) {
+          throw new BadRequestException(
+            `Un proforma existe déjà avec le numéro ${numero_facture_certifiee}`,
+          );
         }
 
-        const montant_total =
-          subtotal + montant_tva + isb_total - (dto.remise || 0);
-
+        // Créer le proforma (temporairement avec valeurs par défaut)
         const proformat = manager.create(Proformat, {
           date_commande_vente: new Date(dto.date_commande_vente),
-          montant_total,
+          montant_total: 0, // Sera calculé
           montant_paye: 0,
-          montant_restant: montant_total,
-          remise: dto.remise,
+          montant_restant: 0, // Sera calculé
+          remise: 0, // Sera calculé
           validee: 1,
           statut: 0,
           id_client: dto.id_client,
@@ -193,9 +270,9 @@ export class ProformatService {
           reglee: 0,
           moyen_reglement: 0,
           type_reglement: dto.type_reglement || 'E',
-          tva: montant_tva,
-          type_isb: dto.type_isb || 'A',
-          isb: isb_total,
+          tva: 0, // Sera le montant TVA calculé
+          type_isb: dto.type_isb || '2%',
+          isb: 0, // Sera calculé
           avoir: 0,
           login: dto.login,
           type_facture: 'PR',
@@ -224,37 +301,177 @@ export class ProformatService {
         });
 
         const savedProformat = await manager.save(Proformat, proformat);
+        console.log(
+          `Proforma sauvegardé avec id: ${savedProformat.id_commande_vente}`,
+        );
 
-        // Initialiser lignes si nécessaire
-        if (!savedProformat.lignes) {
-          savedProformat.lignes = [];
-        }
+        // Traitement des lignes - CALCULER D'ABORD LE MONTANT HT TOTAL
+        let montant_ht_total = 0; // Total HT (prix * quantité)
+        let montant_tva_total = 0; // Montant TVA calculé
+        const savedLignes: LignesProformat[] = [];
 
-        for (const ligne of lignesToSave) {
-          const ligneEntity = manager.create(LignesProformat, {
-            ...ligne,
-            id_commande_vente: savedProformat.id_commande_vente, // Utiliser l'ID numérique
+        for (const ligne of dto.lignes) {
+          const produit = await manager.findOneBy(Produit, {
+            id_produit: ligne.designation, // designation contient l'id_produit dans proformat
           });
-          await manager.save(LignesProformat, ligneEntity);
-          savedProformat.lignes.push(ligneEntity); // Ajouter après initialisation
+          if (!produit) {
+            throw new BadRequestException(
+              `Produit avec id ${ligne.designation} non trouvé`,
+            );
+          }
+
+          // Vérifier que la quantité est valide
+          if (ligne.quantite <= 0) {
+            throw new BadRequestException(
+              `Quantité invalide pour produit ${ligne.designation}: ${ligne.quantite}`,
+            );
+          }
+
+          const prix_vente = ligne.prix_vente ?? produit.prix_unitaire;
+          const remise = ligne.remise || 0;
+          const montant_ligne_ht = prix_vente * ligne.quantite * (1 - remise); // Montant HT après remise ligne
+          const montant_tva_ligne = montant_ligne_ht * (tvaCommande / 100);
+
+          // Accumulation du montant HT total
+          montant_ht_total += montant_ligne_ht;
+          montant_tva_total += montant_tva_ligne;
+
+          console.log(`Ligne ${ligne.designation}:`, {
+            prix_unitaire: prix_vente,
+            quantite: ligne.quantite,
+            remise: remise,
+            montant_ht: montant_ligne_ht,
+            montant_tva: montant_tva_ligne,
+          });
+
+          // Formatter la date pour correspondre au type 'varchar' attendu
+          const formattedDate = new Date(dto.date_commande_vente)
+            .toISOString()
+            .split('T')[0]; // Format YYYY-MM-DD
+
+          // Créer la ligne proforma
+          const ligneEntity = manager.create(LignesProformat, {
+            id_commande_vente: savedProformat.id_commande_vente,
+            designation: ligne.designation,
+            prix_vente,
+            remise,
+            description_remise: ligne.description_remise || '',
+            prix_vente_avant_remise: (
+              ligne.prix_vente_avant_remise || prix_vente
+            ).toString(),
+            quantite: ligne.quantite,
+            montant: montant_ligne_ht,
+            group_tva: ligne.group_tva || produit.group_tva || '',
+            etiquette_tva: ligne.etiquette_tva || produit.etiquette_tva || '',
+            taux_tva: tvaCommande,
+            montant_tva: montant_tva_ligne,
+            isb_ligne: 0, // ISB géré au niveau proforma
+            date: formattedDate, // Conversion en string
+            stock_avant: produit.stock_courant,
+            stock_apres: produit.stock_courant, // PAS DE MODIFICATION DU STOCK
+            retour: 0,
+            statut_proformat: 0,
+          });
+
+          const savedLigne = await manager.save(LignesProformat, ligneEntity);
+          savedLignes.push(savedLigne);
         }
 
+        // Calculer la remise globale
+        let montant_remise = 0;
+        const remiseFrontend =
+          dto.remise != null && !isNaN(dto.remise) && dto.remise >= 0
+            ? dto.remise
+            : 0;
+
+        if (remiseFrontend > 0) {
+          if (remiseFrontend < 1) {
+            // C'est un taux (ex: 0.02 = 2%)
+            montant_remise = montant_ht_total * remiseFrontend;
+            console.log(
+              `Remise calculée: ${montant_ht_total} × ${remiseFrontend} = ${montant_remise} CFA`,
+            );
+          } else {
+            // C'est un montant fixe
+            montant_remise = remiseFrontend;
+            console.log(`Remise fixe: ${montant_remise} CFA`);
+          }
+        }
+
+        console.log('Remise globale appliquée:', montant_remise, 'CFA');
+
+        // Calcul du montant HT après remise globale
+        const montant_ht_apres_remise = montant_ht_total - montant_remise;
+
+        // Recalculer la TVA sur le montant après remise globale
+        montant_tva_total = montant_ht_apres_remise * (tvaCommande / 100);
+
+        // Timbre fiscal
+        const timbre_fiscal = 200; // Fixe
+
+        // Calcul ISB/Précompte sur (montant HT après remise + timbre fiscal)
+        const base_calcul_isb = montant_ht_apres_remise + timbre_fiscal;
+        const montant_isb = base_calcul_isb * isbRate;
+
+        // Calcul du total : (HT - Remise) + TVA + ISB + Timbre
+        const montant_total_final =
+          montant_ht_apres_remise +
+          montant_tva_total +
+          montant_isb +
+          timbre_fiscal;
+
+        console.log('Calculs finaux Proforma:', {
+          montant_ht_initial: montant_ht_total,
+          remise: montant_remise,
+          montant_ht_apres_remise: montant_ht_apres_remise,
+          timbre_fiscal: timbre_fiscal,
+          base_calcul_isb: base_calcul_isb,
+          taux_isb: isbRate,
+          montant_isb: montant_isb,
+          montant_tva: montant_tva_total,
+          total_final: montant_total_final,
+        });
+
+        // Mise à jour du proforma
+        await manager.update(
+          Proformat,
+          { id_commande_vente: savedProformat.id_commande_vente },
+          {
+            montant_total: montant_total_final,
+            montant_restant: montant_total_final,
+            tva: montant_tva_total,
+            isb: montant_isb,
+            remise: montant_remise,
+          },
+        );
+
+        // Mise à jour objet retourné
+        savedProformat.montant_total = montant_total_final;
+        savedProformat.montant_restant = montant_total_final;
+        savedProformat.tva = montant_tva_total;
+        savedProformat.isb = montant_isb;
+        savedProformat.remise = montant_remise;
+        savedProformat.lignes = savedLignes;
         savedProformat.client = client;
 
+        // Log
         const logEntry = manager.create(Log, {
-          log: `Enregistrement de la facture proformat N° ${savedProformat.id_commande_vente}`,
+          log: `Enregistrement de la facture proforma N° ${savedProformat.id_commande_vente}`,
           date: new Date(),
           user: dto.login || 'Utilisateur inconnu',
           archive: 1,
         });
         await manager.save(Log, logEntry);
 
+        console.log('Proforma créé avec succès:', {
+          id: savedProformat.id_commande_vente,
+          numero: savedProformat.numero_facture_certifiee,
+          montant_total: savedProformat.montant_total,
+        });
+
         return savedProformat;
       } catch (error) {
-        console.error(
-          'Erreur dans la transaction:',
-          JSON.stringify(error, null, 2),
-        );
+        console.error('Erreur dans la transaction Proforma:', error);
         throw error;
       }
     });
@@ -448,16 +665,18 @@ export class ProformatService {
   ): Promise<CommandeVente> {
     return this.proformatRepository.manager.transaction(async (manager) => {
       try {
-        // Étape 1 : Vérifier que la proforma existe
+        // Étape 1 : Récupérer et valider la proforma
         const proformat = await manager.findOne(Proformat, {
           where: { id_commande_vente },
-          relations: ['client', 'lignes'],
+          relations: ['client', 'lignes', 'lignes.produit'],
         });
+
         if (!proformat) {
           throw new NotFoundException(
             `Proforma avec id ${id_commande_vente} non trouvée`,
           );
         }
+
         if (proformat.facture_definitive === 'Oui') {
           throw new BadRequestException(
             `Proforma ${id_commande_vente} déjà convertie en facture de vente`,
@@ -474,28 +693,24 @@ export class ProformatService {
           );
         }
 
-        // Étape 3 : Valider type_isb
-        const isbs = await manager.find(Isb, { select: ['isb'] });
-        const validIsb = isbs.map((isb) => isb.isb.trim().toUpperCase());
-        const isbMapping: { [key: string]: string } = {
-          A: '0%',
-          C: '2%',
-          D: '5%',
-        };
-        const mappedTypeIsb =
-          isbMapping[proformat.type_isb.toUpperCase()] ||
-          proformat.type_isb.toUpperCase();
-        if (!validIsb.includes(mappedTypeIsb)) {
-          throw new BadRequestException(
-            `Type ISB invalide: ${proformat.type_isb}. Valeurs valides: ${validIsb.join(', ')}`,
-          );
+        // Étape 3 : Valider le stock AVANT la conversion
+        for (const ligne of proformat.lignes) {
+          const produit = await manager.findOneBy(Produit, {
+            id_produit: ligne.designation,
+          });
+          if (!produit) {
+            throw new BadRequestException(
+              `Produit avec id ${ligne.designation} non trouvé`,
+            );
+          }
+          if (ligne.quantite > produit.stock_courant) {
+            throw new BadRequestException(
+              `Stock insuffisant pour ${produit.produit}. Disponible: ${produit.stock_courant}, demandé: ${ligne.quantite}`,
+            );
+          }
         }
-        const isbRecord = await manager.findOne(Isb, {
-          where: { isb: mappedTypeIsb },
-        });
-        const isbRate = isbRecord?.taux || 0;
 
-        // Étape 4 : Générer le numéro de séquence pour CommandeVente
+        // Étape 4 : Générer le numéro de facture vente
         const currentYear = new Date().getFullYear();
         const lastCommande = await manager.findOne(CommandeVente, {
           where: {
@@ -507,13 +722,13 @@ export class ProformatService {
         const numero_seq = lastCommande ? lastCommande.numero_seq + 1 : 1;
         const numero_facture_certifiee = `${numero_seq.toString().padStart(4, '0')}-${currentYear}`;
 
-        // Étape 5 : Créer la CommandeVente
+        // Étape 5 : Créer la CommandeVente avec les MÊMES montants que le proforma
         const commande = manager.create(CommandeVente, {
-          date_commande_vente: proformat.date_commande_vente,
-          montant_total: proformat.montant_total,
+          date_commande_vente: new Date(), // Date actuelle de conversion
+          montant_total: proformat.montant_total, // Copier les montants calculés
           montant_paye: 0,
           montant_restant: proformat.montant_total,
-          remise: proformat.remise,
+          remise: proformat.remise, // Copier la remise
           validee: 1,
           statut: 0,
           id_client: proformat.id_client,
@@ -521,11 +736,11 @@ export class ProformatService {
           reglee: 0,
           moyen_reglement: 0,
           type_reglement: proformat.type_reglement || 'E',
-          tva: proformat.tva,
+          tva: proformat.tva, // Copier le montant TVA
           type_isb: proformat.type_isb,
-          isb: proformat.isb,
+          isb: proformat.isb, // Copier le montant ISB
           avoir: 0,
-          login: proformat.login,
+          login: login, // Login de l'utilisateur qui fait la conversion
           type_facture: 'FV',
           reponse_mcf: '',
           qrcode: '',
@@ -555,66 +770,78 @@ export class ProformatService {
           exoneration: '',
           numero_seq,
           numero_facture_certifiee,
-          imprimee: 1,
+          imprimee: 0, // Pas encore imprimée
           escompte: 0,
         });
 
         const savedCommande = await manager.save(CommandeVente, commande);
         console.log(
-          `Commande sauvegardée avec id_commande_vente: ${savedCommande.id_commande_vente}`,
+          `CommandeVente créée avec id: ${savedCommande.id_commande_vente}, numéro: ${savedCommande.numero_facture_certifiee}`,
         );
 
-        // Étape 6 : Créer les lignes de CommandeVente
+        // Étape 6 : Créer les lignes ET METTRE À JOUR LE STOCK
         const savedLignes: LignesCommandeVente[] = [];
-        for (const ligne of proformat.lignes) {
-          const produit = await manager.findOneBy(Produit, {
-            id_produit: ligne.designation,
-          });
-          if (!produit) {
-            throw new BadRequestException(
-              `Produit avec id ${ligne.designation} non trouvé`,
-            );
-          }
-          if (ligne.quantite > produit.stock_courant) {
-            throw new BadRequestException(
-              `Stock insuffisant pour produit ${produit.produit}. Disponible: ${produit.stock_courant}, demandé: ${ligne.quantite}`,
-            );
-          }
 
-          const ligneDto = {
-            id_produit: ligne.designation,
-            prix_vente: ligne.prix_vente,
-            remise: ligne.remise,
-            description_remise: ligne.description_remise,
-            prix_vente_avant_remise: ligne.prix_vente_avant_remise,
-            quantite: ligne.quantite,
-            group_tva: ligne.group_tva,
-            etiquette_tva: ligne.etiquette_tva,
-            taux_tva: ligne.taux_tva,
-            isb_ligne: ligne.isb_ligne,
-            date: ligne.date,
+        for (const ligneProforma of proformat.lignes) {
+          const produit = await manager.findOneBy(Produit, {
+            id_produit: ligneProforma.designation,
+          });
+
+          // Créer la ligne de commande vente
+          const ligneDto: CreateLignesCommandeVenteDto = {
+            id_produit: ligneProforma.designation,
+            prix_vente: ligneProforma.prix_vente,
+            remise: ligneProforma.remise || 0,
+            description_remise: ligneProforma.description_remise || 'Aucune',
+            prix_vente_avant_remise:
+              ligneProforma.prix_vente_avant_remise ||
+              ligneProforma.prix_vente.toString(),
+            quantite: ligneProforma.quantite,
+            group_tva: ligneProforma.group_tva || '',
+            etiquette_tva: ligneProforma.etiquette_tva || '',
+            taux_tva: ligneProforma.taux_tva || 0,
+            isb_ligne: ligneProforma.isb_ligne || 0,
+            date: new Date().toISOString().split('T')[0], // Format YYYY-MM-DD (string)
           };
 
+          // Cette méthode va créer la ligne ET mettre à jour le stock automatiquement
           const savedLigne = await this.lignesCommandeVenteService.create(
             ligneDto,
             savedCommande.id_commande_vente,
             login,
           );
+
           savedLignes.push(savedLigne);
+
+          console.log(
+            `Ligne créée et stock mis à jour pour produit ${produit.produit}:`,
+            {
+              stock_avant: produit.stock_courant,
+              quantite_vendue: ligneProforma.quantite,
+              stock_apres: produit.stock_courant - ligneProforma.quantite,
+            },
+          );
         }
 
         savedCommande.lignes = savedLignes;
 
-        // Étape 7 : Mettre à jour la proforma
+        // Étape 7 : Marquer la proforma comme convertie
         await manager.update(
           Proformat,
           { id_commande_vente: proformat.id_commande_vente },
-          { facture_definitive: 'Oui', statut_proformat: 1 },
+          {
+            facture_definitive: 'Oui',
+            statut_proformat: 1,
+          },
+        );
+
+        console.log(
+          `Proforma ${proformat.numero_facture_certifiee} marquée comme convertie`,
         );
 
         // Étape 8 : Enregistrer un log
         const logEntry = manager.create(Log, {
-          log: `Transformation de la proforma N° ${proformat.id_commande_vente} en facture de vente N° ${savedCommande.id_commande_vente}`,
+          log: `Conversion proforma ${proformat.numero_facture_certifiee} en facture vente ${savedCommande.numero_facture_certifiee}`,
           date: new Date(),
           user: login,
           archive: 1,
@@ -623,10 +850,7 @@ export class ProformatService {
 
         return savedCommande;
       } catch (error) {
-        console.error(
-          'Erreur dans la conversion:',
-          JSON.stringify(error, null, 2),
-        );
+        console.error('Erreur lors de la conversion:', error);
         throw error;
       }
     });
@@ -784,110 +1008,702 @@ export class ProformatService {
     await this.proformatRepository.remove(entity);
   }
 
-  async generatePdf(id: number, res: Response): Promise<void> {
+  async generatePdf(
+    id: number,
+    res: Response,
+    type: 'full' | 'simple' = 'full',
+  ): Promise<void> {
+    const VALID_TYPES = ['full', 'simple'];
+
+    if (!VALID_TYPES.includes(type)) {
+      throw new BadRequestException(`Type de document non valide: ${type}`);
+    }
+
     try {
+      // Récupérer le proforma
       const proformat = await this.proformatRepository.findOne({
         where: { id_commande_vente: id },
-        relations: ['client'],
+        relations: ['client', 'lignes', 'lignes.produit'],
       });
+
       if (!proformat) {
-        throw new NotFoundException(`Proformat avec id ${id} non trouvé`);
+        throw new NotFoundException(`Proforma avec id ${id} non trouvé`);
       }
 
-      const lignes = await this.lignesCommandeVenteRepository.find({
-        where: { commandeVente: { id_commande_vente: id } },
-        relations: ['produit'],
-      });
+      if (!proformat.lignes || !proformat.client) {
+        throw new BadRequestException('Données de proforma incomplètes');
+      }
 
-      const doc = new PDFDocument({ size: 'A4', margin: 50 });
+      // Créer le document PDF
+      const doc = new PDFDocument({ size: 'A4', margin: this.MARGINS });
       res.setHeader('Content-Type', 'application/pdf');
+      const filename = `proforma_${sanitizeString(proformat.numero_facture_certifiee || proformat.id_commande_vente.toString())}_${type}.pdf`;
       res.setHeader(
         'Content-Disposition',
-        `attachment; filename=proformat_${proformat.numero_facture_certifiee}.pdf`,
+        `attachment; filename="${filename}"`,
       );
 
+      // Sauvegarde locale pour débogage
+      const fs = require('fs');
+      doc.pipe(fs.createWriteStream(`test_proforma_${id}.pdf`));
       doc.pipe(res);
 
-      // En-tête
-      doc.fontSize(20).text('Facture Proforma', { align: 'center' });
-      doc.moveDown();
-      doc.fontSize(12).text(`Numéro: ${proformat.numero_facture_certifiee}`, {
-        align: 'left',
-      });
-      doc.text(
-        `Date: ${new Date(proformat.date_commande_vente).toLocaleDateString('fr-FR')}`,
-        { align: 'left' },
-      );
-      doc.text(`Client: ${proformat.client?.nom || 'N/A'}`, { align: 'left' });
-      doc.text(`Type: ${proformat.type_facture}`, { align: 'left' });
-      doc.moveDown();
+      // En-tête commun
+      this.drawProformaHeader(doc, proformat);
 
-      // Tableau des lignes
-      doc.fontSize(10);
-      const tableTop = doc.y;
-      const tableLeft = 50;
-      const cellPadding = 10;
-      const rowHeight = 20;
+      // Corps du document
+      if (type === 'full') {
+        this.drawFullProforma(doc, proformat);
+      } else {
+        this.drawSimpleProforma(doc, proformat);
+      }
 
-      // En-têtes du tableau
-      doc.text('Produit', tableLeft, tableTop, { width: 200 });
-      doc.text('Quantité', tableLeft + 200, tableTop, {
-        width: 100,
-        align: 'right',
-      });
-      doc.text('Prix Unitaire', tableLeft + 300, tableTop, {
-        width: 100,
-        align: 'right',
-      });
-      doc.text('Total', tableLeft + 400, tableTop, {
-        width: 100,
-        align: 'right',
-      });
-      doc.moveDown();
-
-      // Lignes
-      lignes.forEach((ligne, index) => {
-        const y = tableTop + (index + 1) * rowHeight;
-        doc.text(ligne.produit?.produit || 'N/A', tableLeft, y, { width: 200 });
-        doc.text(ligne.quantite.toString(), tableLeft + 200, y, {
-          width: 100,
-          align: 'right',
-        });
-        doc.text(
-          ligne.produit.prix_unitaire?.toFixed(2) || '0.00',
-          tableLeft + 300,
-          y,
-          { width: 100, align: 'right' },
-        );
-        doc.text(
-          (ligne.quantite * (ligne.produit.prix_unitaire || 0)).toFixed(2),
-          tableLeft + 400,
-          y,
-          { width: 100, align: 'right' },
-        );
-      });
-
-      // Total
-      doc.moveDown();
-      doc
-        .fontSize(12)
-        .text(`Montant Total: ${proformat.montant_total.toFixed(2)}`, {
-          align: 'right',
-        });
-
+      // Finaliser le document
       doc.end();
+
+      // Mettre à jour le proforma
       proformat.imprimee = 1;
       await this.proformatRepository.save(proformat);
-      console.log(`PDF généré pour proformat ${id}`);
     } catch (error) {
-      console.error(
-        'Erreur lors de la génération du PDF:',
-        JSON.stringify(error, null, 2),
-      );
+      console.error('Erreur lors de la génération du PDF:', error);
+      if (!res.headersSent) {
+        res.status(500).json({
+          message: `Erreur lors de la génération du PDF: ${error.message}`,
+        });
+      }
       throw new BadRequestException(
         `Erreur lors de la génération du PDF: ${error.message}`,
       );
     }
+  }
+
+  private drawProformaHeader(doc: PDFDocument, proformat: any): number {
+    const headerTop = 40;
+    const sectionWidth = (this.PAGE_WIDTH - 2 * this.MARGINS) / 3;
+
+    // Section 1: Alliance Pharma
+    doc
+      .rect(this.MARGINS, headerTop, sectionWidth, this.HEADER_HEIGHT)
+      .strokeColor('black')
+      .stroke();
+    doc.fontSize(10).font('Helvetica-Bold');
+    doc.text('ALLIANCE PHARMA', this.MARGINS + 10, headerTop + 10, {
+      width: sectionWidth - 20,
+      align: 'center',
+    });
+    doc.fontSize(8).font('Helvetica');
+    doc.text('Tel: 80130610', this.MARGINS + 10, headerTop + 25, {
+      width: sectionWidth - 20,
+      align: 'center',
+    });
+    doc.text(
+      'RCCM: NE/NIM/01/2024/B14/00004',
+      this.MARGINS + 10,
+      headerTop + 35,
+      {
+        width: sectionWidth - 20,
+        align: 'center',
+      },
+    );
+    doc.text('NIF: 37364/R', this.MARGINS + 10, headerTop + 45, {
+      width: sectionWidth - 20,
+      align: 'center',
+    });
+    doc.text('BP: 11807', this.MARGINS + 10, headerTop + 55, {
+      width: sectionWidth - 20,
+      align: 'center',
+    });
+    doc.text('Adresse: NIAMEY', this.MARGINS + 10, headerTop + 65, {
+      width: sectionWidth - 20,
+      align: 'center',
+    });
+
+    // Section 2: Logo
+    doc
+      .rect(
+        this.MARGINS + sectionWidth,
+        headerTop,
+        sectionWidth,
+        this.HEADER_HEIGHT,
+      )
+      .strokeColor('black')
+      .stroke();
+    try {
+      doc.image(
+        'src/uploads/rmlogo.png',
+        this.MARGINS + sectionWidth + (sectionWidth - 90) / 2,
+        headerTop + 10,
+        {
+          width: 90,
+        },
+      );
+    } catch (error) {
+      doc
+        .fontSize(10)
+        .font('Helvetica-Bold')
+        .text('LOGO', this.MARGINS + sectionWidth + 10, headerTop + 40, {
+          width: sectionWidth - 20,
+          align: 'center',
+        });
+    }
+
+    // Section 3: FACTURE PROFORMA
+    doc
+      .rect(
+        this.MARGINS + 2 * sectionWidth,
+        headerTop,
+        sectionWidth,
+        this.HEADER_HEIGHT,
+      )
+      .strokeColor('black')
+      .stroke();
+    doc.fontSize(10).font('Helvetica-Bold').fillColor('#0066CC');
+    doc.text(
+      'FACTURE PROFORMA',
+      this.MARGINS + 2 * sectionWidth + 10,
+      headerTop + 10,
+      {
+        width: sectionWidth - 20,
+        align: 'center',
+      },
+    );
+    doc.fillColor('black');
+    doc.fontSize(8).font('Helvetica');
+    doc.text(
+      `N° ${sanitizeString(proformat.id_commande_vente.toString())}`,
+      this.MARGINS + 2 * sectionWidth + 10,
+      headerTop + 30,
+      { width: sectionWidth - 20, align: 'center' },
+    );
+    doc.text(
+      `Date: ${formatDate(proformat.date_commande_vente)}`,
+      this.MARGINS + 2 * sectionWidth + 10,
+      headerTop + 45,
+      {
+        width: sectionWidth - 20,
+        align: 'center',
+      },
+    );
+
+    // Séparateurs verticaux
+    doc
+      .moveTo(this.MARGINS + sectionWidth, headerTop)
+      .lineTo(this.MARGINS + sectionWidth, headerTop + this.HEADER_HEIGHT)
+      .stroke();
+    doc
+      .moveTo(this.MARGINS + 2 * sectionWidth, headerTop)
+      .lineTo(this.MARGINS + 2 * sectionWidth, headerTop + this.HEADER_HEIGHT)
+      .stroke();
+
+    // Ligne de séparation sous l'en-tête
+    const separatorY = headerTop + this.HEADER_HEIGHT + 10;
+    doc
+      .moveTo(this.MARGINS, separatorY)
+      .lineTo(this.PAGE_WIDTH - this.MARGINS, separatorY)
+      .stroke();
+
+    // Informations utilisateur et client
+    const infoTop = separatorY + 15;
+    doc.fontSize(8).font('Helvetica');
+
+    doc.text(
+      `Login: ${sanitizeString(proformat.login)}`,
+      this.MARGINS,
+      infoTop,
+    );
+
+    const clientX = this.MARGINS + 300;
+    doc.text(
+      `Client: ${sanitizeString(proformat.client?.nom || 'N/A')}`,
+      clientX,
+      infoTop,
+    );
+    doc.text(
+      `NIF: ${sanitizeString(proformat.client?.nif || 'N/A')}`,
+      clientX,
+      infoTop + 12,
+    );
+    doc.text(
+      `Adresse: ${sanitizeString(proformat.client?.adresse || 'N/A')}`,
+      clientX,
+      infoTop + 24,
+    );
+    doc.text(
+      `Téléphone: ${sanitizeString(proformat.client?.telephone || 'N/A')}`,
+      clientX,
+      infoTop + 36,
+    );
+
+    return infoTop + 55;
+  }
+
+  private drawFullProforma(doc: PDFDocument, proformat: any): void {
+    const tableTop = this.drawProformaHeader(doc, proformat);
+    const tableLeft = this.MARGINS;
+    const columnWidths = [220, 70, 80, 90, 80];
+
+    // En-tête du tableau
+    this.drawTableHeader(doc, tableTop, tableLeft, columnWidths, [
+      'Désignation',
+      'Qté',
+      'P.U.',
+      'Expiration',
+      'Montant',
+    ]);
+
+    // Lignes du tableau
+    let y = tableTop + 25;
+    let subtotal = 0;
+
+    doc.fontSize(8).font('Helvetica');
+
+    proformat.lignes.forEach((ligne: any) => {
+      if (y + this.ROW_HEIGHT > this.MAX_Y - 100) {
+        doc.addPage();
+        const newTableTop = this.drawProformaHeader(doc, proformat);
+        this.drawTableHeader(doc, newTableTop, tableLeft, columnWidths, [
+          'Désignation',
+          'Qté',
+          'P.U.',
+          'Expiration',
+          'Montant',
+        ]);
+        y = newTableTop + 25;
+      }
+
+      const totalLigne = ligne.prix_vente * ligne.quantite;
+      subtotal += totalLigne;
+
+      let x = tableLeft;
+
+      // Bordure verticale de début
+      doc
+        .moveTo(tableLeft, y)
+        .lineTo(tableLeft, y + this.ROW_HEIGHT)
+        .stroke();
+
+      // Désignation
+      const designation = sanitizeString(
+        ligne.produit?.produit || ligne.designation?.toString() || 'N/A',
+      );
+      doc.text(designation.substring(0, 35), x + 5, y + 5, {
+        width: columnWidths[0] - 10,
+        align: 'left',
+      });
+      x += columnWidths[0];
+
+      doc
+        .moveTo(x, y)
+        .lineTo(x, y + this.ROW_HEIGHT)
+        .stroke();
+
+      // Quantité
+      doc.text(ligne.quantite.toString(), x + 5, y + 5, {
+        width: columnWidths[1] - 10,
+        align: 'center',
+      });
+      x += columnWidths[1];
+
+      doc
+        .moveTo(x, y)
+        .lineTo(x, y + this.ROW_HEIGHT)
+        .stroke();
+
+      // Prix unitaire (arrondi)
+      doc.text(Math.round(ligne.prix_vente || 0).toString(), x + 5, y + 5, {
+        width: columnWidths[2] - 10,
+        align: 'right',
+      });
+      x += columnWidths[2];
+
+      doc
+        .moveTo(x, y)
+        .lineTo(x, y + this.ROW_HEIGHT)
+        .stroke();
+
+      // Date d'expiration
+      const dateExp = ligne.produit?.validite_amm
+        ? new Date(ligne.produit.validite_amm).toLocaleDateString('fr-FR', {
+            day: '2-digit',
+            month: '2-digit',
+            year: '2-digit',
+          })
+        : 'N/A';
+      doc.text(dateExp, x + 5, y + 5, {
+        width: columnWidths[3] - 10,
+        align: 'center',
+      });
+      x += columnWidths[3];
+
+      doc
+        .moveTo(x, y)
+        .lineTo(x, y + this.ROW_HEIGHT)
+        .stroke();
+
+      // Montant total ligne (arrondi)
+      doc.text(Math.round(totalLigne).toString(), x + 5, y + 5, {
+        width: columnWidths[4] - 10,
+        align: 'right',
+      });
+      x += columnWidths[4];
+
+      // Bordure verticale de fin
+      doc
+        .moveTo(x, y)
+        .lineTo(x, y + this.ROW_HEIGHT)
+        .stroke();
+
+      // Bordure horizontale sous la ligne
+      doc
+        .moveTo(tableLeft, y + this.ROW_HEIGHT)
+        .lineTo(
+          tableLeft + columnWidths.reduce((a, b) => a + b, 0),
+          y + this.ROW_HEIGHT,
+        )
+        .stroke();
+
+      y += this.ROW_HEIGHT;
+    });
+
+    // Résumé financier
+    const summaryTop = y + 20;
+    if (summaryTop > this.MAX_Y - 200) {
+      doc.addPage();
+      this.drawProformaFinancialSummary(doc, 40, proformat);
+    } else {
+      this.drawProformaFinancialSummary(doc, summaryTop, proformat);
+    }
+  }
+
+  private drawSimpleProforma(doc: PDFDocument, proformat: any): void {
+    const tableTop = 110;
+    const tableLeft = 50;
+    const columnWidths = [250, 50, 70, 80];
+
+    // En-tête du tableau
+    this.drawTableHeader(doc, tableTop, tableLeft, columnWidths, [
+      'Désignation',
+      'Qté',
+      'P.U.',
+      'Total',
+    ]);
+
+    // Lignes
+    let y = tableTop + 30;
+    let subtotal = 0;
+
+    doc.fontSize(8).font('Helvetica');
+
+    proformat.lignes.forEach((ligne: any) => {
+      if (y + this.ROW_HEIGHT > this.MAX_Y) {
+        doc.addPage();
+        y = 40;
+        this.drawTableHeader(doc, y, tableLeft, columnWidths, [
+          'Désignation',
+          'Qté',
+          'P.U.',
+          'Total',
+        ]);
+        y += 30;
+      }
+
+      const totalLigne = ligne.prix_vente * ligne.quantite;
+      subtotal += totalLigne;
+
+      let x = tableLeft;
+      const designation = sanitizeString(
+        ligne.produit?.produit || ligne.designation?.toString() || 'N/A',
+      );
+      doc.text(designation.substring(0, 40), x, y, {
+        width: columnWidths[0],
+        align: 'left',
+      });
+      x += columnWidths[0];
+
+      doc.text(ligne.quantite.toString(), x, y, {
+        width: columnWidths[1],
+        align: 'center',
+      });
+      x += columnWidths[1];
+
+      doc.text(Math.round(ligne.prix_vente || 0).toString(), x, y, {
+        width: columnWidths[2],
+        align: 'right',
+      });
+      x += columnWidths[2];
+
+      doc.text(Math.round(totalLigne).toString(), x, y, {
+        width: columnWidths[3],
+        align: 'right',
+      });
+
+      y += this.ROW_HEIGHT;
+    });
+
+    doc
+      .moveTo(tableLeft, y)
+      .lineTo(tableLeft + columnWidths.reduce((a, b) => a + b, 0), y)
+      .stroke();
+
+    // Résumé simplifié
+    const summaryTop = y + 20 > this.MAX_Y ? (doc.addPage(), 40) : y + 20;
+    this.drawSimpleProformaSummary(doc, summaryTop, proformat);
+  }
+
+  private formatCurrency(amount: number): string {
+    return Math.round(amount)
+      .toString()
+      .replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  }
+
+  private drawProformaFinancialSummary(
+    doc: PDFDocument,
+    summaryTop: number,
+    proformat: any,
+  ): void {
+    const montantHT = proformat.lignes.reduce(
+      (sum: number, ligne: any) => sum + ligne.prix_vente * ligne.quantite,
+      0,
+    );
+    const remise = Number(proformat.remise || 0);
+    const montantNetHT = montantHT - remise;
+    const timbreFiscal = 200;
+    const tva = Number(proformat.tva || 0);
+    const isb = Number(proformat.isb || 0);
+    const totalTTC = montantNetHT + tva + isb + timbreFiscal;
+
+    // Titre
+    doc.fontSize(12).font('Helvetica-Bold').fillColor('#0066CC');
+    doc.text('RÉSUMÉ FINANCIER', this.MARGINS, summaryTop);
+    doc.fillColor('black');
+
+    // Ligne de séparation
+    doc
+      .moveTo(this.MARGINS, summaryTop + 15)
+      .lineTo(this.PAGE_WIDTH - this.MARGINS, summaryTop + 15)
+      .stroke();
+
+    let currentY = summaryTop + 25;
+    doc.fontSize(9).font('Helvetica');
+
+    // Montant HT initial
+    doc.text('Montant HT:', this.MARGINS, currentY);
+    doc.text(
+      `${this.formatCurrency(montantHT)} CFA`,
+      this.PAGE_WIDTH - this.MARGINS - 100,
+      currentY,
+      { align: 'right' },
+    );
+    currentY += 15;
+
+    // Timbre fiscal
+    doc.text('Timbre Fiscal:', this.MARGINS, currentY);
+    doc.text(
+      `${this.formatCurrency(timbreFiscal)} CFA`,
+      this.PAGE_WIDTH - this.MARGINS - 100,
+      currentY,
+      { align: 'right' },
+    );
+    currentY += 15;
+
+    // Remise (si > 0)
+    if (remise > 0) {
+      doc.text('Remise:', this.MARGINS, currentY);
+      doc.text(
+        `-${this.formatCurrency(remise)} CFA`,
+        this.PAGE_WIDTH - this.MARGINS - 100,
+        currentY,
+        { align: 'right' },
+      );
+      currentY += 15;
+
+      doc.text('Net HT:', this.MARGINS, currentY);
+      doc.text(
+        `${this.formatCurrency(montantNetHT)} CFA`,
+        this.PAGE_WIDTH - this.MARGINS - 100,
+        currentY,
+        { align: 'right' },
+      );
+      currentY += 15;
+    }
+
+    // ISB/Précompte
+    if (isb > 0) {
+      const baseCalculIsb = montantNetHT + timbreFiscal;
+      const tauxISB =
+        baseCalculIsb > 0 ? ((isb / baseCalculIsb) * 100).toFixed(0) : '0';
+      doc.text(`ISB/Précompte (${tauxISB}%):`, this.MARGINS, currentY);
+      doc.text(
+        `${this.formatCurrency(isb)} CFA`,
+        this.PAGE_WIDTH - this.MARGINS - 100,
+        currentY,
+        { align: 'right' },
+      );
+      currentY += 15;
+    }
+
+    // TVA (si > 0)
+    if (tva > 0) {
+      const tauxTVA =
+        montantNetHT > 0 ? ((tva / montantNetHT) * 100).toFixed(0) : '0';
+      doc.text(`TVA (${tauxTVA}%):`, this.MARGINS, currentY);
+      doc.text(
+        `${this.formatCurrency(tva)} CFA`,
+        this.PAGE_WIDTH - this.MARGINS - 100,
+        currentY,
+        { align: 'right' },
+      );
+      currentY += 15;
+    }
+
+    currentY += 5;
+
+    // Ligne de séparation avant total
+    doc
+      .moveTo(this.MARGINS, currentY)
+      .lineTo(this.PAGE_WIDTH - this.MARGINS, currentY)
+      .stroke();
+    currentY += 10;
+
+    // Total TTC (en gras avec couleur)
+    doc.fontSize(11).font('Helvetica-Bold').fillColor('#0066CC');
+    doc.text('MONTANT TOTAL TTC:', this.MARGINS, currentY);
+    doc.text(
+      `${this.formatCurrency(totalTTC)} CFA`,
+      this.PAGE_WIDTH - this.MARGINS - 100,
+      currentY,
+      { align: 'right' },
+    );
+    doc.fillColor('black');
+    currentY += 25;
+
+    // Informations complémentaires
+    doc.fontSize(8).font('Helvetica');
+    doc.text(
+      `Nombre d'articles: ${proformat.lignes.length}`,
+      this.MARGINS,
+      currentY,
+    );
+    currentY += 12;
+    doc.text('* Montants en francs CFA', this.MARGINS, currentY);
+    currentY += 20;
+
+    // Note importante pour proforma
+    doc.fontSize(8).font('Helvetica-Oblique').fillColor('#666666');
+    doc.text(
+      "Cette facture proforma est valable 30 jours à compter de sa date d'émission.",
+      this.MARGINS,
+      currentY,
+      { width: this.PAGE_WIDTH - 2 * this.MARGINS, align: 'center' },
+    );
+    currentY += 15;
+    doc.text(
+      "Elle ne constitue pas une facture définitive et n'a aucune valeur comptable.",
+      this.MARGINS,
+      currentY,
+      { width: this.PAGE_WIDTH - 2 * this.MARGINS, align: 'center' },
+    );
+    doc.fillColor('black');
+    currentY += 25;
+
+    // Signature
+    doc.fontSize(9).font('Helvetica-Bold');
+    doc.text('Le Gestionnaire', this.MARGINS, currentY, { underline: true });
+
+    // Ligne finale
+    doc
+      .moveTo(this.MARGINS, currentY + 20)
+      .lineTo(this.PAGE_WIDTH - this.MARGINS, currentY + 20)
+      .stroke();
+  }
+
+  private drawSimpleProformaSummary(
+    doc: PDFDocument,
+    summaryTop: number,
+    proformat: any,
+  ): void {
+    const montantHT = proformat.lignes.reduce(
+      (sum: number, ligne: any) => sum + ligne.prix_vente * ligne.quantite,
+      0,
+    );
+    const remise = Number(proformat.remise || 0);
+    const montantNetHT = montantHT - remise;
+    const timbreFiscal = 200;
+    const tva = Number(proformat.tva || 0);
+    const isb = Number(proformat.isb || 0);
+    const totalTTC = montantNetHT + tva + isb + timbreFiscal;
+
+    let y = summaryTop;
+    doc.fontSize(9).font('Helvetica');
+
+    doc.text(`Montant HT: ${this.formatCurrency(montantHT)} CFA`, 350, y, {
+      align: 'right',
+    });
+
+    if (remise > 0) {
+      y += 15;
+      doc.text(`Remise: -${this.formatCurrency(remise)} CFA`, 350, y, {
+        align: 'right',
+      });
+    }
+
+    y += 15;
+    doc.text(`Timbre: ${this.formatCurrency(timbreFiscal)} CFA`, 350, y, {
+      align: 'right',
+    });
+
+    if (tva > 0) {
+      y += 15;
+      doc.text(`TVA: ${this.formatCurrency(tva)} CFA`, 350, y, {
+        align: 'right',
+      });
+    }
+
+    if (isb > 0) {
+      y += 15;
+      doc.text(`ISB: ${this.formatCurrency(isb)} CFA`, 350, y, {
+        align: 'right',
+      });
+    }
+
+    y += 20;
+    doc.fontSize(10).font('Helvetica-Bold').fillColor('#0066CC');
+    doc.text(`TOTAL TTC: ${this.formatCurrency(totalTTC)} CFA`, 350, y, {
+      align: 'right',
+    });
+    doc.fillColor('black');
+
+    y += 25;
+    doc.fontSize(8).font('Helvetica-Oblique');
+    doc.text('Proforma valable 30 jours - Sans valeur comptable', 50, y, {
+      width: 500,
+      align: 'center',
+    });
+  }
+
+  private drawTableHeader(
+    doc: PDFDocument,
+    tableTop: number,
+    tableLeft: number,
+    columnWidths: number[],
+    headers: string[],
+  ): void {
+    doc.fontSize(10).font('Helvetica-Bold');
+    let x = tableLeft;
+    headers.forEach((header, i) => {
+      doc.text(header, x, tableTop, {
+        width: columnWidths[i],
+        align: 'center',
+      });
+      x += columnWidths[i];
+    });
+    doc
+      .moveTo(tableLeft, tableTop + 20)
+      .lineTo(
+        tableLeft + columnWidths.reduce((a, b) => a + b, 0),
+        tableTop + 20,
+      )
+      .stroke();
   }
 
   async findAllByYear(

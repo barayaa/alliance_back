@@ -13,6 +13,7 @@ import { TypeReglement } from '../type_reglement/type_reglement.entity';
 import { CaptureStockModule } from 'src/capture_stock/capture_stock.module';
 import { LogModule } from 'src/log/log.module';
 import { MMvtStock } from 'src/m_mvt_stock/m_mvt_stock.entity';
+import { Reglement } from 'src/reglement/reglement.entity';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { MMvtStock } from 'src/m_mvt_stock/m_mvt_stock.entity';
       Remise,
       TypeReglement,
       MMvtStock,
+      Reglement,
     ]),
     LignesCommandeVenteModule,
     CaptureStockModule,

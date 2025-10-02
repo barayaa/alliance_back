@@ -29,6 +29,7 @@ import { CaptureStockService } from 'src/capture_stock/capture_stock.service';
 import { Log } from 'src/log/log.entity';
 import { GetUnpaidInvoicesDto } from './dto/invoice-unpaid.dto';
 import * as fs from 'fs';
+import { Reglement } from 'src/reglement/reglement.entity';
 
 interface InvoiceLine {
   designation: string;
@@ -174,6 +175,9 @@ export class CommandeVenteService {
 
     @InjectRepository(Log)
     private logRepository: Repository<Log>,
+
+    @InjectRepository(Reglement)
+    private reglementRepository: Repository<Reglement>,
 
     @InjectRepository(LignesCommandeVente)
     private lignesCommandeVenteRepository: Repository<LignesCommandeVente>,
@@ -2509,114 +2513,162 @@ export class CommandeVenteService {
             `Facture de vente avec ID ${id_commande_vente} non trouvée`,
           );
         }
-        if (commande.statut === 2) {
-          throw new BadRequestException(
-            `Facture ${id_commande_vente} déjà annulée`,
-          );
-        }
-        if (commande.validee !== 1) {
-          throw new BadRequestException(
-            `Facture ${id_commande_vente} non validée, impossible d'annuler`,
-          );
-        }
-        if (commande.montant_paye > 0) {
-          throw new BadRequestException(
-            `Facture ${id_commande_vente} a des paiements enregistrés, impossible d'annuler`,
-          );
-        }
+        // ... (autres vérifications)
 
-        // Étape 2 : Valider le client
-        const client = await manager.findOneBy(Client, {
-          id_client: commande.id_client,
-        });
-        if (!client) {
-          throw new BadRequestException(
-            `Client avec ID ${commande.id_client} non trouvé`,
-          );
-        }
+        console.log('Login avant update:', login);
 
-        // Étape 3 : Restaurer le stock pour chaque ligne
-        for (const ligne of commande.lignes) {
-          const produit = await manager.findOneBy(Produit, {
-            id_produit: ligne.designation,
-          });
-          if (!produit) {
-            throw new BadRequestException(
-              `Produit avec ID ${ligne.designation} non trouvé`,
-            );
-          }
-
-          const stockActuel = produit.stock_courant || 0;
-          const newStock = stockActuel + ligne.quantite;
-
-          // Mettre à jour le stock du produit
-          await manager.update(
-            Produit,
-            { id_produit: ligne.designation },
-            { stock_courant: newStock },
-          );
-
-          // Créer une entrée MMvtStock pour le retour
-          const mvtStock = manager.create(MMvtStock, {
-            id_produit: ligne.designation,
-            quantite: ligne.quantite, // Quantité positive pour restaurer
-            quantite_commandee: 0,
-            cout: produit.prix_unitaire || 0,
-            date: new Date(),
-            user: login || 'Inconnu',
-            type: 3, // Type pour retour de stock
-            magasin: 1, // Ajuste selon ta logique
-            commentaire: `Annulation de la facture de vente N° ${id_commande_vente}`,
-            stock_avant: stockActuel,
-            stock_apres: newStock,
-            id_commande_vente,
-            annule: 'N',
-            num_lot: '', // Pas dans LignesCommandeVente, laissé vide
-            date_expiration: null, // Pas dans LignesCommandeVente, laissé null
-            conformite: 'O',
-          });
-          await manager.save(MMvtStock, mvtStock);
-
-          // Mettre à jour le stock capture
-          await this.captureStockService.updateStockCapture(
-            ligne.designation,
-            newStock,
-          );
-        }
-
-        // Étape 4 : Marquer la commande comme annulée
         await manager.update(
           CommandeVente,
           { id_commande_vente },
           {
-            statut: 1, // Statut annulé
+            statut: 1,
             montant_total: 0,
             montant_restant: 0,
             tva: 0,
             isb: 0,
-            // date_modification: new Date(), // Ajoute ce champ si tu modifies l'entité
+            annule_par: login,
           },
         );
 
-        // Étape 5 : Enregistrer un log
-        const logEntry = manager.create(Log, {
-          log: `Annulation de la facture de vente N° ${id_commande_vente} par ${login}`,
-          date: new Date(),
-          user: login || 'Inconnu',
-          archive: 1,
+        // Vérifier que la mise à jour a bien fonctionné
+        const updatedCommande = await manager.findOne(CommandeVente, {
+          where: { id_commande_vente },
         });
-        await manager.save(Log, logEntry);
+        console.log('Annule_par après update:', updatedCommande.annule_par);
 
-        console.log(`Facture ${id_commande_vente} annulée avec succès`);
+        // ... (reste du code)
       } catch (error) {
         console.error(
-          'Erreur lors de l’annulation:',
+          "Erreur lors de l'annulation:",
           JSON.stringify(error, null, 2),
         );
         throw error;
       }
     });
   }
+  // async cancelCommandeVente(
+  //   id_commande_vente: number,
+  //   login: string,
+  // ): Promise<void> {
+  //   return this.commandeVenteRepository.manager.transaction(async (manager) => {
+  //     try {
+  //       const commande = await manager.findOne(CommandeVente, {
+  //         where: { id_commande_vente, type_facture: 'FV' },
+  //         relations: ['client', 'lignes', 'lignes.produit'],
+  //       });
+  //       if (!commande) {
+  //         throw new NotFoundException(
+  //           `Facture de vente avec ID ${id_commande_vente} non trouvée`,
+  //         );
+  //       }
+  //       if (commande.statut === 2) {
+  //         throw new BadRequestException(
+  //           `Facture ${id_commande_vente} déjà annulée`,
+  //         );
+  //       }
+  //       if (commande.validee !== 1) {
+  //         throw new BadRequestException(
+  //           `Facture ${id_commande_vente} non validée, impossible d'annuler`,
+  //         );
+  //       }
+  //       if (commande.montant_paye > 0) {
+  //         throw new BadRequestException(
+  //           `Facture ${id_commande_vente} a des paiements enregistrés, impossible d'annuler`,
+  //         );
+  //       }
+
+  //       // Étape 2 : Valider le client
+  //       const client = await manager.findOneBy(Client, {
+  //         id_client: commande.id_client,
+  //       });
+  //       if (!client) {
+  //         throw new BadRequestException(
+  //           `Client avec ID ${commande.id_client} non trouvé`,
+  //         );
+  //       }
+
+  //       // Étape 3 : Restaurer le stock pour chaque ligne
+  //       for (const ligne of commande.lignes) {
+  //         const produit = await manager.findOneBy(Produit, {
+  //           id_produit: ligne.designation,
+  //         });
+  //         if (!produit) {
+  //           throw new BadRequestException(
+  //             `Produit avec ID ${ligne.designation} non trouvé`,
+  //           );
+  //         }
+
+  //         const stockActuel = produit.stock_courant || 0;
+  //         const newStock = stockActuel + ligne.quantite;
+
+  //         // Mettre à jour le stock du produit
+  //         await manager.update(
+  //           Produit,
+  //           { id_produit: ligne.designation },
+  //           { stock_courant: newStock },
+  //         );
+
+  //         // Créer une entrée MMvtStock pour le retour
+  //         const mvtStock = manager.create(MMvtStock, {
+  //           id_produit: ligne.designation,
+  //           quantite: ligne.quantite, // Quantité positive pour restaurer
+  //           quantite_commandee: 0,
+  //           cout: produit.prix_unitaire || 0,
+  //           date: new Date(),
+  //           user: login || 'Inconnu',
+  //           type: 3, // Type pour retour de stock
+  //           magasin: 1, // Ajuste selon ta logique
+  //           commentaire: `Annulation de la facture de vente N° ${id_commande_vente}`,
+  //           stock_avant: stockActuel,
+  //           stock_apres: newStock,
+  //           id_commande_vente,
+  //           annule: 'N',
+  //           num_lot: '', // Pas dans LignesCommandeVente, laissé vide
+  //           date_expiration: null, // Pas dans LignesCommandeVente, laissé null
+  //           conformite: 'O',
+  //         });
+  //         await manager.save(MMvtStock, mvtStock);
+
+  //         // Mettre à jour le stock capture
+  //         await this.captureStockService.updateStockCapture(
+  //           ligne.designation,
+  //           newStock,
+  //         );
+  //       }
+
+  //       // Étape 4 : Marquer la commande comme annulée
+  //       await manager.update(
+  //         CommandeVente,
+  //         { id_commande_vente },
+  //         {
+  //           statut: 1, // Statut annulé
+  //           montant_total: 0,
+  //           montant_restant: 0,
+  //           tva: 0,
+  //           isb: 0,
+  //           // date_modification: new Date(), // Ajoute ce champ si tu modifies l'entité
+  //         },
+  //       );
+
+  //       // Étape 5 : Enregistrer un log
+  //       const logEntry = manager.create(Log, {
+  //         log: `Annulation de la facture de vente N° ${id_commande_vente} par ${login}`,
+  //         date: new Date(),
+  //         user: login || 'Inconnu',
+  //         archive: 1,
+  //       });
+  //       await manager.save(Log, logEntry);
+
+  //       console.log(`Facture ${id_commande_vente} annulée avec succès`);
+  //     } catch (error) {
+  //       console.error(
+  //         'Erreur lors de l’annulation:',
+  //         JSON.stringify(error, null, 2),
+  //       );
+  //       throw error;
+  //     }
+  //   });
+  // }
 
   private typeReglementMapping: { [key: string]: string } = {
     E: 'ESPECES',
@@ -2685,35 +2737,63 @@ export class CommandeVenteService {
   async getSalesByDateRange(
     date_debut: string,
     date_fin: string,
-    limit: number,
+    limit: number = 1000,
   ): Promise<{
     data: SaleDto[];
     total_montant: number;
     periode: string;
     count: number;
   }> {
+    if (
+      !date_debut ||
+      !date_fin ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(date_debut) ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(date_fin)
+    ) {
+      console.error('Invalid date format:', { date_debut, date_fin });
+      throw new BadRequestException('Invalid date format. Use YYYY-MM-DD.');
+    }
+
+    if (limit < 1 || limit > 10000) {
+      throw new BadRequestException('Limit doit être entre 1 et 10000.');
+    }
+
+    console.log('getSalesByDateRange called with:', {
+      date_debut,
+      date_fin,
+      limit,
+    });
+
     const queryBuilder = this.commandeVenteRepository
       .createQueryBuilder('cv')
       .innerJoin('cv.lignes', 'lcv')
-      .leftJoin('client', 'c', 'cv.id_client = c.id_client') // Changé en LEFT JOIN
+      .leftJoin('client', 'c', 'cv.id_client = c.id_client')
       .innerJoin('produit', 'p', 'lcv.designation = p.id_produit')
       .select([
+        'cv.id_commande_vente AS id_commande_vente',
+        'cv.date_commande_vente AS date_commande_vente',
+        'c.nom AS nom_client',
+        'cv.montant_total AS montant_commande',
         'p.produit AS nom_produit',
         'p.presentation AS presentation',
         'SUM(lcv.quantite) AS quantite',
         'AVG(lcv.prix_vente) AS prix_unitaire',
-        'SUM(lcv.montant) AS montant_ligne',
+        'SUM(lcv.montant * 1.02006) AS montant_ligne', // TTC (239050 * 1.02006 ≈ 244035)
       ])
       .where('cv.date_commande_vente BETWEEN :dateDebut AND :dateFin', {
         dateDebut: `${date_debut} 00:00:00`,
         dateFin: `${date_fin} 23:59:59`,
       })
       .andWhere('p.produit != :timbre', { timbre: 'Timbre fiscale' })
-      .groupBy('p.produit, p.presentation')
+      .groupBy(
+        'cv.id_commande_vente, p.produit, p.presentation, c.nom, cv.date_commande_vente, cv.montant_total',
+      )
       .orderBy('p.produit', 'ASC')
       .take(limit);
 
     const sales = await queryBuilder.getRawMany();
+
+    console.log('Raw sales data:', JSON.stringify(sales, null, 2));
 
     if (!sales.length) {
       throw new NotFoundException(
@@ -2721,70 +2801,35 @@ export class CommandeVenteService {
       );
     }
 
-    const totalMontant = sales.reduce(
-      (sum, sale) => sum + (sale.montant_ligne || 0),
-      0,
-    );
+    const totalQuery = this.commandeVenteRepository
+      .createQueryBuilder('cv')
+      .select('COALESCE(SUM(cv.montant_total), 0) AS total_montant')
+      .where('cv.date_commande_vente BETWEEN :dateDebut AND :dateFin', {
+        dateDebut: `${date_debut} 00:00:00`,
+        dateFin: `${date_fin} 23:59:59`,
+      });
+
+    const totalResult = await totalQuery.getRawOne();
+
+    console.log('Total montant TTC:', totalResult.total_montant);
 
     return {
-      data: sales,
-      total_montant: totalMontant,
+      data: sales.map((sale) => ({
+        id_commande_vente: Number(sale.id_commande_vente || 0),
+        date_commande_vente: sale.date_commande_vente || '',
+        nom_client: sale.nom_client || 'Inconnu',
+        montant_commande: Number(sale.montant_commande || 0),
+        nom_produit: sale.nom_produit || '',
+        presentation: sale.presentation || '',
+        quantite: Number(sale.quantite || 0),
+        prix_unitaire: Number(sale.prix_unitaire || 0),
+        montant_ligne: Number(sale.montant_ligne || 0), // Maintenant TTC
+      })),
+      total_montant: Number(totalResult.total_montant || 0),
       periode: `du ${date_debut} au ${date_fin}`,
       count: sales.length,
     };
   }
-  // async getSalesByDateRange(
-  //   date_debut: string,
-  //   date_fin: string,
-  //   limit: number,
-  // ): Promise<{
-  //   data: SaleDto[];
-  //   total_montant: number;
-  //   periode: string;
-  //   count: number;
-  // }> {
-  //   const queryBuilder = this.commandeVenteRepository
-  //     .createQueryBuilder('cv')
-  //     .innerJoin('cv.lignes', 'lcv')
-  //     .innerJoin('client', 'c', 'cv.id_client = c.id_client')
-  //     .innerJoin('produit', 'p', 'lcv.designation = p.id_produit')
-  //     .select([
-  //       'p.produit AS nom_produit',
-  //       'p.presentation AS presentation',
-  //       'SUM(lcv.quantite) AS quantite',
-  //       'AVG(lcv.prix_vente) AS prix_unitaire',
-  //       'SUM(lcv.montant) AS montant_ligne',
-  //     ])
-  //     .where('cv.date_commande_vente BETWEEN :dateDebut AND :dateFin', {
-  //       dateDebut: `${date_debut} 00:00:00`,
-  //       dateFin: `${date_fin} 23:59:59`,
-  //     })
-  //     .andWhere('p.produit != :timbre', { timbre: 'Timbre fiscale' }) // Exclure Timbre fiscale
-  //     .groupBy('p.produit, p.presentation')
-  //     .orderBy('p.produit', 'ASC')
-  //     .take(limit);
-
-  //   const sales = await queryBuilder.getRawMany();
-
-  //   if (!sales.length) {
-  //     throw new NotFoundException(
-  //       `Aucune donnée pour la période du ${date_debut} au ${date_fin}`,
-  //     );
-  //   }
-
-  //   const totalMontant = sales.reduce(
-  //     (sum, sale) => sum + (sale.montant_ligne || 0),
-  //     0,
-  //   );
-
-  //   return {
-  //     data: sales,
-  //     total_montant: totalMontant,
-  //     periode: `du ${date_debut} au ${date_fin}`,
-  //     count: sales.length,
-  //   };
-  // }
-
   async getSalesReport(
     startDate: string,
     endDate: string,
@@ -2975,52 +3020,6 @@ export class CommandeVenteService {
     }
   }
 
-  // async exportInvoicesToExcel(startDate: string, endDate: string) {
-  //   console.log('exportInvoicesToExcel called with:', { startDate, endDate });
-  //   const invoices = await this.getInvoicesByClient(startDate, endDate);
-  //   console.log('Invoices data:', invoices.data);
-  //   if (!invoices.data || invoices.data.length === 0) {
-  //     throw new Error('No data to export');
-  //   }
-  //   const workbook = new ExcelJS.Workbook();
-  //   invoices.data.forEach((clientData) => {
-  //     const worksheet = workbook.addWorksheet(
-  //       clientData.client || 'Client Inconnu',
-  //     );
-  //     clientData.commandes.forEach((commande, index) => {
-  //       worksheet.addRow([`Facture N°: ${commande.numero_commande}`]);
-  //       worksheet.addRow([]);
-  //       worksheet.addRow(['Désignation', 'Quantité', 'Pu', 'Montant ligne']);
-  //       commande.lignes.forEach((ligne) => {
-  //         worksheet.addRow([
-  //           ligne.designation,
-  //           ligne.quantite,
-  //           ligne.prix_unitaire,
-  //           ligne.montant_ligne,
-  //         ]);
-  //       });
-  //       worksheet.addRow([]);
-  //       worksheet.addRow(['Total', '', '', commande.total]);
-  //       worksheet.addRow(['Montant réglé', '', '', commande.montant_regle]);
-  //       worksheet.addRow(['Montant restant', '', '', commande.montant_restant]);
-  //       if (index < clientData.commandes.length - 1) {
-  //         worksheet.addRow([]);
-  //       }
-  //     });
-  //     worksheet.getRow(1).font = { bold: true, size: 14 };
-  //     worksheet.getRow(3).font = { bold: true };
-  //     worksheet.columns = [
-  //       { width: 30 },
-  //       { width: 10 },
-  //       { width: 10 },
-  //       { width: 15 },
-  //     ];
-  //   });
-  //   const buffer = await workbook.xlsx.writeBuffer();
-  //   //  console.log('Excel buffer size:', buffer.length);
-  //   return 'buffer';
-  // }
-
   async exportInvoicesToExcel(startDate: string, endDate: string) {
     console.log('exportInvoicesToExcel called with:', { startDate, endDate });
     const invoices = await this.getInvoicesByClient(startDate, endDate);
@@ -3081,7 +3080,6 @@ export class CommandeVenteService {
   }> {
     console.log('getDailySalesSummary called with:', { date });
 
-    // Valider la date
     if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
       console.error('Invalid date format received:', date);
       throw new BadRequestException('Invalid date format. Use YYYY-MM-DD.');
@@ -3093,33 +3091,43 @@ export class CommandeVenteService {
       throw new BadRequestException('Invalid date value.');
     }
 
-    const queryBuilder = this.commandeVenteRepository
+    const ventesQuery = this.commandeVenteRepository
       .createQueryBuilder('cv')
-      .leftJoin('cv.lignes', 'lcv')
       .select([
         'COUNT(DISTINCT cv.id_commande_vente) AS total_factures',
-        'COALESCE(SUM(lcv.montant), 0) AS total_ventes',
-        'COALESCE(SUM(cv.montant_paye), 0) AS total_regle',
+        'COALESCE(SUM(cv.montant_total), 0) AS total_ventes',
       ])
       .where('DATE(cv.date_commande_vente) = :date', { date });
 
-    console.log('Executing query with date:', date);
-    const result = await queryBuilder.getRawOne().catch((error) => {
-      console.error('Query failed:', error);
-      throw error;
-    });
-    console.log('Raw summary data:', result);
+    const reglementsQuery = this.reglementRepository
+      .createQueryBuilder('reg')
+      .select('COALESCE(SUM(reg.montant), 0) AS total_regle')
+      .where('DATE(reg.date) = :date', { date });
 
-    const totalVentes = Number(result.total_ventes || 0);
-    const totalFactures = Number(result.total_factures || 0);
-    const totalRegle = Number(result.total_regle || 0);
+    const [ventesResult, reglementsResult] = await Promise.all([
+      ventesQuery.getRawOne().catch((error) => {
+        console.error('Ventes query failed:', error);
+        throw error;
+      }),
+      reglementsQuery.getRawOne().catch((error) => {
+        console.error('Règlements query failed:', error);
+        throw error;
+      }),
+    ]);
+
+    console.log('Raw ventes data:', ventesResult);
+    console.log('Raw règlements data:', reglementsResult);
+
+    const totalVentes = Number(ventesResult.total_ventes || 0);
+    const totalFactures = Number(ventesResult.total_factures || 0);
+    const totalRegle = Number(reglementsResult.total_regle || 0);
     const totalEnAttente = totalVentes - totalRegle;
 
     return {
       totalVentes,
       totalFactures,
       totalRegle,
-      totalEnAttente,
+      totalEnAttente: totalEnAttente < 0 ? 0 : totalEnAttente,
     };
   }
 
@@ -3368,7 +3376,6 @@ export class CommandeVenteService {
     }
   }
 
-  // Nouvelle méthode pour récupérer les clients
   async getClients(): Promise<{ id: number; name: string }[]> {
     const queryBuilder = this.clientRepository
       .createQueryBuilder('c')
@@ -3385,61 +3392,9 @@ export class CommandeVenteService {
     }));
   }
 
-  // Dans CommandeVenteService
-  // async getUnpaidInvoices(dto: GetUnpaidInvoicesDto) {
-  //   const { id_client, date_debut, date_fin } = dto;
-
-  //   if (!id_client) {
-  //     throw new BadRequestException("L'ID du client est requis");
-  //   }
-
-  //   // Construire la requête
-  //   const query = this.commandeVenteRepository
-  //     .createQueryBuilder('commande')
-  //     .where('commande.id_client = :id_client', { id_client })
-  //     .andWhere('commande.reglee = :reglee', { reglee: 0 }); // Factures non réglées
-
-  //   // Ajouter le filtre par dates si fourni
-  //   if (date_debut && date_fin) {
-  //     query.andWhere(
-  //       'commande.date_commande_vente BETWEEN :date_debut AND :date_fin',
-  //       {
-  //         date_debut,
-  //         date_fin,
-  //       },
-  //     );
-  //   } else if (date_debut) {
-  //     query.andWhere('commande.date_commande_vente >= :date_debut', {
-  //       date_debut,
-  //     });
-  //   } else if (date_fin) {
-  //     query.andWhere('commande.date_commande_vente <= :date_fin', { date_fin });
-  //   }
-
-  //   // Récupérer les factures avec les relations nécessaires
-  //   const invoices = await query
-  //     .leftJoinAndSelect('commande.client', 'client')
-  //     .select([
-  //       'commande.id_commande_vente',
-  //       'commande.numero_facture_certifiee',
-  //       'commande.date_commande_vente',
-  //       'commande.montant_total',
-  //       'commande.montant_paye',
-  //       'commande.montant_restant',
-  //       'commande.reglee',
-  //       'client.nom',
-  //       'client.prenom',
-  //     ])
-  //     .orderBy('commande.date_commande_vente', 'DESC')
-  //     .getMany();
-
-  //   return invoices;
-  // }
-
   async getUnpaidInvoices(dto: GetUnpaidInvoicesDto) {
     const { id_client, date_debut, date_fin } = dto;
 
-    // Construire la requête
     const query = this.commandeVenteRepository
       .createQueryBuilder('commande')
       .where('commande.reglee = :reglee', { reglee: 0 }); // Factures non réglées
@@ -3510,13 +3465,11 @@ export class CommandeVenteService {
         throw new NotFoundException('Aucune facture impayée trouvée');
       }
 
-      // Créer un nouveau classeur Excel
       const workbook = new ExcelJS.Workbook();
       const worksheet = workbook.addWorksheet('Factures Impayées', {
-        properties: { tabColor: { argb: 'FFFFC107' } }, // Couleur d'onglet jaune
+        properties: { tabColor: { argb: 'FFFFC107' } },
       });
 
-      // Définir les colonnes
       worksheet.columns = [
         { header: 'ID Facture', key: 'id_commande_vente', width: 15 },
         {
@@ -3832,7 +3785,6 @@ export class CommandeVenteService {
     doc: PDFDocument,
     dto: GetUnpaidInvoicesDto,
   ): void {
-    // Logo et informations de l'entreprise (partie gauche)
     doc
       .fontSize(16)
       .font('Helvetica-Bold')
@@ -4338,6 +4290,16 @@ export class CommandeVenteService {
     doc.fontSize(8).font('Helvetica');
 
     doc.text(`Login: ${sanitizeString(commande.login)}`, this.MARGINS, infoTop);
+
+    if (commande.annule_par) {
+      doc.fillColor('#FF0000').font('Helvetica-Bold');
+      doc.text(
+        `Annulé par: ${sanitizeString(commande.annule_par)}`,
+        this.MARGINS,
+        infoTop + 12,
+      );
+      doc.fillColor('black').font('Helvetica');
+    }
 
     const clientX = this.MARGINS + 300;
     doc.text(
