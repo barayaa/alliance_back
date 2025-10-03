@@ -30,6 +30,8 @@ import { Log } from 'src/log/log.entity';
 import { GetUnpaidInvoicesDto } from './dto/invoice-unpaid.dto';
 import * as fs from 'fs';
 import { Reglement } from 'src/reglement/reglement.entity';
+import { GetSupplierStatsDto } from './dto/suplierStat.dto';
+import { ProductStats, SupplierStats } from './interface';
 
 interface InvoiceLine {
   designation: string;
@@ -4324,5 +4326,245 @@ export class CommandeVenteService {
     );
 
     return infoTop + 55;
+  }
+
+  // Dans CommandeVenteService
+
+  async getSupplierProductStats(
+    dto: GetSupplierStatsDto,
+  ): Promise<SupplierStats[]> {
+    console.log('getSupplierProductStats called with:', dto);
+
+    // Valider les dates
+    if (
+      !dto.date_debut ||
+      !dto.date_fin ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(dto.date_debut) ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(dto.date_fin)
+    ) {
+      throw new BadRequestException(
+        'Format de date invalide. Utilisez YYYY-MM-DD.',
+      );
+    }
+
+    // Construire la requête principale
+    const queryBuilder = this.lignesCommandeVenteRepository
+      .createQueryBuilder('lcv')
+      .innerJoin(
+        'commande_vente',
+        'cv',
+        'lcv.id_commande_vente = cv.id_commande_vente',
+      )
+      .innerJoin('produit', 'p', 'lcv.designation = p.id_produit')
+      .leftJoin(
+        'titulaire_amm',
+        't',
+        'p.cle_titulaire_amm = t.id_titulaire_amm',
+      )
+      .select([
+        'COALESCE(t.id_titulaire_amm, 0) AS id_fournisseur',
+        'COALESCE(t.titulaire_amm, "Fournisseur Inconnu") AS nom_fournisseur',
+        'p.id_produit AS id_produit',
+        'p.produit AS nom_produit',
+        'p.denomination_commune_internationale AS denomination',
+        'p.dosage AS dosage',
+        'p.presentation AS presentation',
+        'p.stock_courant AS stock_courant',
+        'SUM(lcv.quantite) AS quantite_vendue',
+        'COUNT(DISTINCT cv.id_commande_vente) AS nombre_ventes',
+      ])
+      .where('cv.date_commande_vente BETWEEN :date_debut AND :date_fin', {
+        date_debut: `${dto.date_debut} 00:00:00`,
+        date_fin: `${dto.date_fin} 23:59:59`,
+      })
+      .andWhere('cv.statut = :statut', { statut: 0 }); // Factures non annulées
+    // .andWhere('cv.validee = :validee', { validee: 1 }); // Factures validées
+
+    // Filtre optionnel par fournisseur
+    if (dto.id_fournisseur) {
+      queryBuilder.andWhere('t.id_titulaire_amm = :id_fournisseur', {
+        id_fournisseur: dto.id_fournisseur,
+      });
+    }
+
+    queryBuilder
+      .groupBy(
+        't.id_titulaire_amm, t.titulaire_amm, p.id_produit, p.produit, p.denomination_commune_internationale, p.dosage, p.presentation, p.stock_courant',
+      )
+      .orderBy('t.titulaire_amm', 'ASC')
+      .addOrderBy('p.produit', 'ASC');
+
+    const rawResults = await queryBuilder.getRawMany();
+    console.log('Raw supplier stats:', rawResults);
+
+    // Regrouper par fournisseur
+    const groupedData: { [key: number]: SupplierStats } = {};
+
+    rawResults.forEach((row) => {
+      const idFournisseur = Number(row.id_fournisseur);
+
+      if (!groupedData[idFournisseur]) {
+        groupedData[idFournisseur] = {
+          id_fournisseur: idFournisseur,
+          nom_fournisseur: row.nom_fournisseur,
+          produits: [],
+          total_quantite_vendue: 0,
+          total_produits: 0,
+        };
+      }
+
+      const productStats: ProductStats = {
+        id_produit: Number(row.id_produit),
+        nom_produit: row.nom_produit,
+        denomination: row.denomination || 'N/A',
+        dosage: row.dosage || 'N/A',
+        presentation: row.presentation || 'N/A',
+        quantite_vendue: Number(row.quantite_vendue || 0),
+        stock_courant: Number(row.stock_courant || 0),
+        nombre_ventes: Number(row.nombre_ventes || 0),
+      };
+
+      groupedData[idFournisseur].produits.push(productStats);
+      groupedData[idFournisseur].total_quantite_vendue +=
+        productStats.quantite_vendue;
+      groupedData[idFournisseur].total_produits += 1;
+    });
+
+    const result = Object.values(groupedData);
+    console.log('Grouped supplier stats:', result);
+
+    return result;
+  }
+
+  // Méthode pour exporter en Excel
+  async exportSupplierStatsToExcel(
+    dto: GetSupplierStatsDto,
+    res: Response,
+  ): Promise<void> {
+    console.log('exportSupplierStatsToExcel called with:', dto);
+
+    try {
+      const stats = await this.getSupplierProductStats(dto);
+
+      if (!stats || stats.length === 0) {
+        throw new NotFoundException('Aucune donnée trouvée pour cette période');
+      }
+
+      const workbook = new ExcelJS.Workbook();
+
+      // Créer une feuille par fournisseur
+      stats.forEach((supplier) => {
+        const worksheetName = supplier.nom_fournisseur.substring(0, 31); // Max 31 caractères
+        const worksheet = workbook.addWorksheet(worksheetName);
+
+        // En-tête du fournisseur
+        worksheet.mergeCells('A1:G1');
+        const titleCell = worksheet.getCell('A1');
+        titleCell.value = `${supplier.nom_fournisseur} - Statistiques Produits`;
+        titleCell.font = { size: 14, bold: true };
+        titleCell.alignment = { vertical: 'middle', horizontal: 'center' };
+        titleCell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FF4CAF50' },
+        };
+
+        // Période
+        worksheet.mergeCells('A2:G2');
+        const periodCell = worksheet.getCell('A2');
+        periodCell.value = `Période: ${dto.date_debut} au ${dto.date_fin}`;
+        periodCell.font = { size: 11, italic: true };
+        periodCell.alignment = { horizontal: 'center' };
+
+        // Résumé
+        worksheet.mergeCells('A3:G3');
+        const summaryCell = worksheet.getCell('A3');
+        summaryCell.value = `Total produits: ${supplier.total_produits} | Quantité totale vendue: ${supplier.total_quantite_vendue}`;
+        summaryCell.font = { size: 10, bold: true };
+        summaryCell.alignment = { horizontal: 'center' };
+
+        // Ligne vide
+        worksheet.addRow([]);
+
+        // En-têtes des colonnes
+        worksheet.columns = [
+          { header: 'Produit', key: 'nom_produit', width: 30 },
+          { header: 'DCI', key: 'denomination', width: 25 },
+          { header: 'Dosage', key: 'dosage', width: 15 },
+          { header: 'Présentation', key: 'presentation', width: 15 },
+          { header: 'Qté Vendue', key: 'quantite_vendue', width: 12 },
+          { header: 'Stock Actuel', key: 'stock_courant', width: 12 },
+          { header: 'Nb Ventes', key: 'nombre_ventes', width: 12 },
+        ];
+
+        // Styliser les en-têtes
+        worksheet.getRow(5).eachCell((cell) => {
+          cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+          cell.fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: 'FF1976D2' },
+          };
+          cell.alignment = { vertical: 'middle', horizontal: 'center' };
+          cell.border = {
+            top: { style: 'thin' },
+            left: { style: 'thin' },
+            bottom: { style: 'thin' },
+            right: { style: 'thin' },
+          };
+        });
+
+        // Ajouter les données
+        supplier.produits.forEach((produit) => {
+          const row = worksheet.addRow({
+            nom_produit: produit.nom_produit,
+            denomination: produit.denomination,
+            dosage: produit.dosage,
+            presentation: produit.presentation,
+            quantite_vendue: produit.quantite_vendue,
+            stock_courant: produit.stock_courant,
+            nombre_ventes: produit.nombre_ventes,
+          });
+
+          // Styliser les cellules
+          row.eachCell((cell) => {
+            cell.border = {
+              top: { style: 'thin' },
+              left: { style: 'thin' },
+              bottom: { style: 'thin' },
+              right: { style: 'thin' },
+            };
+            cell.alignment = { vertical: 'middle' };
+          });
+
+          // Alertes sur stock faible
+          if (produit.stock_courant < 10) {
+            row.getCell('stock_courant').fill = {
+              type: 'pattern',
+              pattern: 'solid',
+              fgColor: { argb: 'FFFF5252' }, // Rouge
+            };
+          }
+        });
+      });
+
+      // Configurer les en-têtes HTTP
+      res.setHeader(
+        'Content-Type',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      );
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename=stats_fournisseurs_${dto.date_debut}_${dto.date_fin}.xlsx`,
+      );
+
+      await workbook.xlsx.write(res);
+      res.end();
+    } catch (error) {
+      console.error('Erreur export Excel:', error);
+      throw new InternalServerErrorException(
+        `Erreur lors de l'exportation: ${error.message}`,
+      );
+    }
   }
 }

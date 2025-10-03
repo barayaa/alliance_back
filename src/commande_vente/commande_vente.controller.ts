@@ -25,6 +25,7 @@ import * as ExcelJS from 'exceljs';
 import { Auth } from 'src/auth/decorators/auth.decorators';
 import { AuthType } from 'src/auth/enums/auth.types.enum';
 import { GetUnpaidInvoicesDto } from './dto/invoice-unpaid.dto';
+import { GetSupplierStatsDto } from './dto/suplierStat.dto';
 
 interface ProductSalesHistory {
   id_facture: number;
@@ -49,6 +50,20 @@ class DateRangeDto {
 @Controller('commande_vente')
 export class CommandeVenteController {
   constructor(private readonly commandeVenteService: CommandeVenteService) {}
+
+  @Get('supplier-stats')
+  async getSupplierProductStats(@Query() dto: GetSupplierStatsDto) {
+    return this.commandeVenteService.getSupplierProductStats(dto);
+  }
+
+  @Auth(AuthType.None)
+  @Get('supplier-stats/export')
+  async exportSupplierStats(
+    @Query() dto: GetSupplierStatsDto,
+    @Res() res: Response,
+  ) {
+    return this.commandeVenteService.exportSupplierStatsToExcel(dto, res);
+  }
 
   // Exporter toutes les factures annulées dans un seul PDF
   @Auth(AuthType.None)

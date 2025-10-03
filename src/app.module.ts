@@ -62,6 +62,8 @@ import { DataSource } from 'typeorm';
 import { DepenseModule } from './depense/depense.module';
 import { parseJawsDbUrl } from './utils/db_url-parser';
 import { AuditModule } from './audit/audit.module';
+import { MouvementCaisseModule } from './mouvement_caisse/mouvement_caisse.module';
+import { MouvementCompteModule } from './mouvement_compte/mouvement_compte.module';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -152,6 +154,8 @@ import { AuditModule } from './audit/audit.module';
     MenuModule,
     DepenseModule,
     AuditModule,
+    MouvementCaisseModule,
+    MouvementCompteModule,
   ],
   controllers: [AppController],
   providers: [AppService],
