@@ -64,13 +64,13 @@ export class CaptureStockService {
         date_capture: new Date(),
       });
       await this.captureStockRepository.save(capture);
-      console.log(
-        `Capture mise à jour pour id_produit ${idProduit}: stock_courant = ${newStock}`,
-      );
+      // console.log(
+      //   `Capture mise à jour pour id_produit ${idProduit}: stock_courant = ${newStock}`,
+      // );
     } else {
-      console.log(
-        `Capture existante pour id_produit ${idProduit} avec même stock, pas de mise à jour`,
-      );
+      // console.log(
+      //   `Capture existante pour id_produit ${idProduit} avec même stock, pas de mise à jour`,
+      // );
     }
   }
 
@@ -140,90 +140,32 @@ export class CaptureStockService {
     return result;
   }
 
-  async getStockStateByDate(date?: string): Promise<any> {
-    // Déterminer la date cible
-    const targetDate = date ? new Date(date) : new Date();
-    if (isNaN(targetDate.getTime())) {
-      throw new BadRequestException('Date invalide.');
-    }
-    targetDate.setHours(0, 0, 0, 0);
-
-    // Trouver la dernière date de capture avant ou à la date cible
-    const latestCapture = await this.captureStockRepository
-      .createQueryBuilder('cs')
-      .select('MAX(cs.date_capture)', 'latest_date')
-      .where('cs.date_capture <= :targetDate', {
-        targetDate: targetDate.toISOString(),
-      })
-      .getRawOne();
-
-    if (!latestCapture || !latestCapture.latest_date) {
-      return { items: [], totalValue: 0 }; // Aucun stock trouvé
-    }
-
-    const latestDate = new Date(latestCapture.latest_date);
-    const nextDate = new Date(latestDate);
-    nextDate.setDate(latestDate.getDate() + 1);
-
-    // Récupérer l'état du stock pour la dernière date trouvée
-    const products = await this.captureStockRepository
-      .createQueryBuilder('cs')
-      .leftJoin('cs.produit', 'produit')
-      .leftJoin('produit.marque', 'marque')
-      .leftJoin('produit.forme', 'forme')
-      .select([
-        'produit.id_produit AS produit_id_produit',
-        'produit.produit AS produit',
-        'produit.dosage AS produit_dosage',
-        'produit.presentation AS produit_presentation',
-        'produit.prix_unitaire AS produit_prix_unitaire',
-        'marque.marque AS marque',
-        'forme.forme AS forme',
-        'cs.stock_courant AS latest_stock',
-        'cs.date_capture AS latest_date',
-      ])
-      .where('cs.date_capture >= :startDate AND cs.date_capture < :endDate', {
-        startDate: latestDate.toISOString(),
-        endDate: nextDate.toISOString(),
-      })
-      .orderBy('cs.date_capture', 'DESC')
-      .groupBy('produit.id_produit')
-      .addGroupBy('cs.stock_courant')
-      .addGroupBy('cs.date_capture')
-      .addGroupBy('produit.produit')
-      .addGroupBy('produit.dosage')
-      .addGroupBy('produit.presentation')
-      .addGroupBy('produit.prix_unitaire')
-      .addGroupBy('marque.marque')
-      .addGroupBy('forme.forme')
-      .getRawMany();
-
-    const items = products.map((item) => ({
-      id_produit: item.produit_id_produit,
-      designation: item.produit || 'N/A',
-      marque: item.marque || 'N/A',
-      dosage: item.produit_dosage || 'N/A',
-      forme: item.forme || 'N/A',
-      presentation: item.produit_presentation || 'N/A',
-      latest_stock: item.latest_stock || 0,
-      prix_unitaire: item.produit_prix_unitaire || 0,
-      value: (item.latest_stock || 0) * (item.produit_prix_unitaire || 0),
-      latest_date: item.latest_date,
-    }));
-
-    return {
-      items,
-      totalValue: items.reduce((sum, item) => sum + item.value, 0),
-      date: latestDate.toISOString().split('T')[0], // Retourner la date utilisée
-    };
-  }
-
   // async getStockStateByDate(date?: string): Promise<any> {
+  //   // Déterminer la date cible
   //   const targetDate = date ? new Date(date) : new Date();
+  //   if (isNaN(targetDate.getTime())) {
+  //     throw new BadRequestException('Date invalide.');
+  //   }
   //   targetDate.setHours(0, 0, 0, 0);
-  //   const nextDate = new Date(targetDate);
-  //   nextDate.setDate(targetDate.getDate() + 1);
 
+  //   // Trouver la dernière date de capture avant ou à la date cible
+  //   const latestCapture = await this.captureStockRepository
+  //     .createQueryBuilder('cs')
+  //     .select('MAX(cs.date_capture)', 'latest_date')
+  //     .where('cs.date_capture <= :targetDate', {
+  //       targetDate: targetDate.toISOString(),
+  //     })
+  //     .getRawOne();
+
+  //   if (!latestCapture || !latestCapture.latest_date) {
+  //     return { items: [], totalValue: 0 }; // Aucun stock trouvé
+  //   }
+
+  //   const latestDate = new Date(latestCapture.latest_date);
+  //   const nextDate = new Date(latestDate);
+  //   nextDate.setDate(latestDate.getDate() + 1);
+
+  //   // Récupérer l'état du stock pour la dernière date trouvée
   //   const products = await this.captureStockRepository
   //     .createQueryBuilder('cs')
   //     .leftJoin('cs.produit', 'produit')
@@ -241,12 +183,12 @@ export class CaptureStockService {
   //       'cs.date_capture AS latest_date',
   //     ])
   //     .where('cs.date_capture >= :startDate AND cs.date_capture < :endDate', {
-  //       startDate: targetDate.toISOString(),
+  //       startDate: latestDate.toISOString(),
   //       endDate: nextDate.toISOString(),
   //     })
-  //     .orderBy('cs.date_capture', 'DESC') // Trie par date décroissante
-  //     .groupBy('produit.id_produit') // Regroupe par produit pour éviter les doublons
-  //     .addGroupBy('cs.stock_courant') // Ajoute les champs nécessaires au GROUP BY
+  //     .orderBy('cs.date_capture', 'DESC')
+  //     .groupBy('produit.id_produit')
+  //     .addGroupBy('cs.stock_courant')
   //     .addGroupBy('cs.date_capture')
   //     .addGroupBy('produit.produit')
   //     .addGroupBy('produit.dosage')
@@ -272,13 +214,101 @@ export class CaptureStockService {
   //   return {
   //     items,
   //     totalValue: items.reduce((sum, item) => sum + item.value, 0),
+  //     date: latestDate.toISOString().split('T')[0], // Retourner la date utilisée
   //   };
   // }
 
+  async getStockStateByDate(date?: string): Promise<any> {
+    // Déterminer la date cible
+    const targetDate = date ? new Date(date) : new Date();
+    if (isNaN(targetDate.getTime())) {
+      throw new BadRequestException('Date invalide.');
+    }
+    targetDate.setHours(0, 0, 0, 0);
+
+    // Récupérer tous les produits avec leurs relations
+    const products = await this.produitRepository
+      .createQueryBuilder('produit')
+      .leftJoin('produit.marque', 'marque')
+      .leftJoin('produit.forme', 'forme')
+      .select([
+        'produit.id_produit AS produit_id_produit',
+        'produit.produit AS produit',
+        'produit.dosage AS produit_dosage',
+        'produit.presentation AS produit_presentation',
+        'produit.prix_unitaire AS produit_prix_unitaire',
+        'marque.marque AS marque',
+        'forme.forme AS forme',
+      ])
+      .getRawMany();
+
+    // Récupérer TOUTES les captures avant ou à la date cible
+    const allCaptures = await this.captureStockRepository
+      .createQueryBuilder('cs')
+      .select([
+        'cs.id_produit AS id_produit',
+        'cs.stock_courant AS stock_courant',
+        'cs.date_capture AS date_capture',
+      ])
+      .where('cs.date_capture <= :targetDate', {
+        targetDate: targetDate.toISOString(),
+      })
+      .orderBy('cs.date_capture', 'DESC')
+      .getRawMany();
+
+    // Créer une map avec la dernière capture pour chaque produit
+    const stockMap = new Map<
+      number,
+      { latest_stock: number; latest_date: Date }
+    >();
+
+    allCaptures.forEach((capture) => {
+      // Ne garder que la première occurrence (la plus récente grâce au ORDER BY DESC)
+      if (!stockMap.has(capture.id_produit)) {
+        stockMap.set(capture.id_produit, {
+          latest_stock: capture.stock_courant || 0,
+          latest_date: capture.date_capture,
+        });
+      }
+    });
+
+    // Mapper les produits avec leurs stocks
+    const items = products.map((product) => {
+      const stockInfo = stockMap.get(product.produit_id_produit) || {
+        latest_stock: 0,
+        latest_date: null,
+      };
+
+      return {
+        id_produit: product.produit_id_produit,
+        designation: product.produit || 'N/A',
+        marque: product.marque || 'N/A',
+        dosage: product.produit_dosage || 'N/A',
+        forme: product.forme || 'N/A',
+        presentation: product.produit_presentation || 'N/A',
+        latest_stock: stockInfo.latest_stock,
+        prix_unitaire: product.produit_prix_unitaire || 0,
+        value: stockInfo.latest_stock * (product.produit_prix_unitaire || 0),
+        latest_date: stockInfo.latest_date
+          ? new Date(stockInfo.latest_date).toISOString().split('T')[0]
+          : null,
+      };
+    });
+
+    // Calculer la valeur totale du stock
+    const totalValue = items.reduce((sum, item) => sum + item.value, 0);
+
+    return {
+      items,
+      totalValue,
+      date: targetDate.toISOString().split('T')[0],
+    };
+  }
+
   async exportStockStateToExcel(date?: string): Promise<Buffer> {
-    console.log('exportStockStateToExcel params:', { date });
+    // console.log('exportStockStateToExcel params:', { date });
     const stocks = await this.getStockStateByDate(date);
-    console.log('Raw stocks:', stocks);
+    // console.log('Raw stocks:', stocks);
 
     const data = stocks.items.map((stock: any) => ({
       Désignation: stock.produit?.produit || '-', // À ajuster si produit est chargé
@@ -287,7 +317,7 @@ export class CaptureStockService {
       'Valeur (FCA)': stock.value,
     }));
 
-    console.log('exportStockStateToExcel data:', data);
+    // console.log('exportStockStateToExcel data:', data);
     const worksheet = XLSX.utils.json_to_sheet(data);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Etat Stock');

@@ -4437,6 +4437,137 @@ export class CommandeVenteService {
   }
 
   // Méthode pour exporter en Excel
+  // async exportSupplierStatsToExcel(
+  //   dto: GetSupplierStatsDto,
+  //   res: Response,
+  // ): Promise<void> {
+  //   console.log('exportSupplierStatsToExcel called with:', dto);
+
+  //   try {
+  //     const stats = await this.getSupplierProductStats(dto);
+
+  //     if (!stats || stats.length === 0) {
+  //       throw new NotFoundException('Aucune donnée trouvée pour cette période');
+  //     }
+
+  //     const workbook = new ExcelJS.Workbook();
+
+  //     // Créer une feuille par fournisseur
+  //     stats.forEach((supplier) => {
+  //       const worksheetName = supplier.nom_fournisseur.substring(0, 31); // Max 31 caractères
+  //       const worksheet = workbook.addWorksheet(worksheetName);
+
+  //       // En-tête du fournisseur
+  //       worksheet.mergeCells('A1:G1');
+  //       const titleCell = worksheet.getCell('A1');
+  //       titleCell.value = `${supplier.nom_fournisseur} - Statistiques Produits`;
+  //       titleCell.font = { size: 14, bold: true };
+  //       titleCell.alignment = { vertical: 'middle', horizontal: 'center' };
+  //       titleCell.fill = {
+  //         type: 'pattern',
+  //         pattern: 'solid',
+  //         fgColor: { argb: 'FF4CAF50' },
+  //       };
+
+  //       // Période
+  //       worksheet.mergeCells('A2:G2');
+  //       const periodCell = worksheet.getCell('A2');
+  //       periodCell.value = `Période: ${dto.date_debut} au ${dto.date_fin}`;
+  //       periodCell.font = { size: 11, italic: true };
+  //       periodCell.alignment = { horizontal: 'center' };
+
+  //       // Résumé
+  //       worksheet.mergeCells('A3:G3');
+  //       const summaryCell = worksheet.getCell('A3');
+  //       summaryCell.value = `Total produits: ${supplier.total_produits} | Quantité totale vendue: ${supplier.total_quantite_vendue}`;
+  //       summaryCell.font = { size: 10, bold: true };
+  //       summaryCell.alignment = { horizontal: 'center' };
+
+  //       // Ligne vide
+  //       worksheet.addRow([]);
+
+  //       // En-têtes des colonnes
+  //       worksheet.columns = [
+  //         { header: 'Produit', key: 'nom_produit', width: 30 },
+  //         { header: 'DCI', key: 'denomination', width: 25 },
+  //         { header: 'Dosage', key: 'dosage', width: 15 },
+  //         { header: 'Présentation', key: 'presentation', width: 15 },
+  //         { header: 'Qté Vendue', key: 'quantite_vendue', width: 12 },
+  //         { header: 'Stock Actuel', key: 'stock_courant', width: 12 },
+  //         { header: 'Nb Ventes', key: 'nombre_ventes', width: 12 },
+  //       ];
+
+  //       // Styliser les en-têtes
+  //       worksheet.getRow(5).eachCell((cell) => {
+  //         cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+  //         cell.fill = {
+  //           type: 'pattern',
+  //           pattern: 'solid',
+  //           fgColor: { argb: 'FF1976D2' },
+  //         };
+  //         cell.alignment = { vertical: 'middle', horizontal: 'center' };
+  //         cell.border = {
+  //           top: { style: 'thin' },
+  //           left: { style: 'thin' },
+  //           bottom: { style: 'thin' },
+  //           right: { style: 'thin' },
+  //         };
+  //       });
+
+  //       // Ajouter les données
+  //       supplier.produits.forEach((produit) => {
+  //         const row = worksheet.addRow({
+  //           nom_produit: produit.nom_produit,
+  //           denomination: produit.denomination,
+  //           dosage: produit.dosage,
+  //           presentation: produit.presentation,
+  //           quantite_vendue: produit.quantite_vendue,
+  //           stock_courant: produit.stock_courant,
+  //           nombre_ventes: produit.nombre_ventes,
+  //         });
+
+  //         // Styliser les cellules
+  //         row.eachCell((cell) => {
+  //           cell.border = {
+  //             top: { style: 'thin' },
+  //             left: { style: 'thin' },
+  //             bottom: { style: 'thin' },
+  //             right: { style: 'thin' },
+  //           };
+  //           cell.alignment = { vertical: 'middle' };
+  //         });
+
+  //         // Alertes sur stock faible
+  //         if (produit.stock_courant < 10) {
+  //           row.getCell('stock_courant').fill = {
+  //             type: 'pattern',
+  //             pattern: 'solid',
+  //             fgColor: { argb: 'FFFF5252' }, // Rouge
+  //           };
+  //         }
+  //       });
+  //     });
+
+  //     // Configurer les en-têtes HTTP
+  //     res.setHeader(
+  //       'Content-Type',
+  //       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  //     );
+  //     res.setHeader(
+  //       'Content-Disposition',
+  //       `attachment; filename=stats_fournisseurs_${dto.date_debut}_${dto.date_fin}.xlsx`,
+  //     );
+
+  //     await workbook.xlsx.write(res);
+  //     res.end();
+  //   } catch (error) {
+  //     console.error('Erreur export Excel:', error);
+  //     throw new InternalServerErrorException(
+  //       `Erreur lors de l'exportation: ${error.message}`,
+  //     );
+  //   }
+  // }
+
   async exportSupplierStatsToExcel(
     dto: GetSupplierStatsDto,
     res: Response,
@@ -4452,9 +4583,8 @@ export class CommandeVenteService {
 
       const workbook = new ExcelJS.Workbook();
 
-      // Créer une feuille par fournisseur
       stats.forEach((supplier) => {
-        const worksheetName = supplier.nom_fournisseur.substring(0, 31); // Max 31 caractères
+        const worksheetName = supplier.nom_fournisseur.substring(0, 31);
         const worksheet = workbook.addWorksheet(worksheetName);
 
         // En-tête du fournisseur
@@ -4486,63 +4616,84 @@ export class CommandeVenteService {
         // Ligne vide
         worksheet.addRow([]);
 
-        // En-têtes des colonnes
+        // Définir les largeurs des colonnes
         worksheet.columns = [
-          { header: 'Produit', key: 'nom_produit', width: 30 },
-          { header: 'DCI', key: 'denomination', width: 25 },
-          { header: 'Dosage', key: 'dosage', width: 15 },
-          { header: 'Présentation', key: 'presentation', width: 15 },
-          { header: 'Qté Vendue', key: 'quantite_vendue', width: 12 },
-          { header: 'Stock Actuel', key: 'stock_courant', width: 12 },
-          { header: 'Nb Ventes', key: 'nombre_ventes', width: 12 },
+          { width: 30 }, // A: Produit
+          { width: 25 }, // B: DCI
+          { width: 15 }, // C: Dosage
+          { width: 15 }, // D: Présentation
+          { width: 12 }, // E: Qté Vendue
+          { width: 12 }, // F: Stock Actuel
+          { width: 12 }, // G: Nb Ventes
         ];
 
+        // Ajouter manuellement la ligne d'en-têtes
+        const headerRow = worksheet.addRow([
+          'Produit',
+          'DCI',
+          'Dosage',
+          'Présentation',
+          'Qté Vendue',
+          'Stock Actuel',
+          'Nb Ventes',
+        ]);
+        console.log('En-têtes ajoutés:', headerRow.values);
+
         // Styliser les en-têtes
-        worksheet.getRow(5).eachCell((cell) => {
-          cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-          cell.fill = {
-            type: 'pattern',
-            pattern: 'solid',
-            fgColor: { argb: 'FF1976D2' },
-          };
-          cell.alignment = { vertical: 'middle', horizontal: 'center' };
-          cell.border = {
-            top: { style: 'thin' },
-            left: { style: 'thin' },
-            bottom: { style: 'thin' },
-            right: { style: 'thin' },
-          };
-        });
-
-        // Ajouter les données
-        supplier.produits.forEach((produit) => {
-          const row = worksheet.addRow({
-            nom_produit: produit.nom_produit,
-            denomination: produit.denomination,
-            dosage: produit.dosage,
-            presentation: produit.presentation,
-            quantite_vendue: produit.quantite_vendue,
-            stock_courant: produit.stock_courant,
-            nombre_ventes: produit.nombre_ventes,
-          });
-
-          // Styliser les cellules
-          row.eachCell((cell) => {
+        headerRow.eachCell((cell, colNumber) => {
+          if (colNumber <= 7) {
+            cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+            cell.fill = {
+              type: 'pattern',
+              pattern: 'solid',
+              fgColor: { argb: 'FF1976D2' },
+            };
+            cell.alignment = { vertical: 'middle', horizontal: 'center' };
             cell.border = {
               top: { style: 'thin' },
               left: { style: 'thin' },
               bottom: { style: 'thin' },
               right: { style: 'thin' },
             };
-            cell.alignment = { vertical: 'middle' };
+          }
+        });
+
+        // Ajouter les données
+        console.log(
+          'Données produits:',
+          JSON.stringify(supplier.produits, null, 2),
+        );
+        supplier.produits.forEach((produit) => {
+          console.log('Champs produit:', Object.keys(produit));
+          const row = worksheet.addRow([
+            produit.nom_produit || 'N/A',
+            produit.denomination || 'N/A',
+            produit.dosage || 'N/A',
+            produit.presentation || 'N/A',
+            Number(produit.quantite_vendue) || 0,
+            Number(produit.stock_courant) || 0,
+            Number(produit.nombre_ventes) || 0,
+          ]);
+
+          // Styliser les cellules
+          row.eachCell((cell, colNumber) => {
+            if (colNumber <= 7) {
+              cell.border = {
+                top: { style: 'thin' },
+                left: { style: 'thin' },
+                bottom: { style: 'thin' },
+                right: { style: 'thin' },
+              };
+              cell.alignment = { vertical: 'middle' };
+            }
           });
 
           // Alertes sur stock faible
           if (produit.stock_courant < 10) {
-            row.getCell('stock_courant').fill = {
+            row.getCell(6).fill = {
               type: 'pattern',
               pattern: 'solid',
-              fgColor: { argb: 'FFFF5252' }, // Rouge
+              fgColor: { argb: 'FFFF5252' },
             };
           }
         });
