@@ -44,7 +44,7 @@ export class ProduitService {
     const new_stock = dto.new_stock;
     const difference = new_stock - old_stock;
 
-    // Déterminer le type de correction
+    // Déterminer le type de correction pour l'audit
     let type_correction: string;
     if (difference > 0) {
       type_correction = 'ajout';
@@ -75,8 +75,91 @@ export class ProduitService {
 
     await this.auditRepository.save(audit);
 
+    // Créer un mouvement de stock pour correction d'inventaire
+    const mouvementStock = this.mvtStockRepository.create({
+      id_produit: produit.id_produit,
+      produit: produit,
+      quantite: Math.abs(difference), // Quantité corrigée (positive)
+      stock_avant: old_stock,
+      stock_apres: new_stock,
+      type: 5, // Type pour "Correction d’inventaire"
+      date: new Date(),
+      user: dto.user_nom,
+      commentaire:
+        dto.description || `Correction d’inventaire: ${type_correction}`,
+      magasin: 1, // Valeur par défaut (à ajuster si nécessaire)
+      cout: produit.prix_vente || 0, // Ajuster selon la propriété correcte
+      annule: 'non',
+      id_commande_vente: null, // Pas de commande associée
+      num_lot: null,
+      date_expiration: produit.validite_amm || null,
+      conformite: null,
+    });
+
+    try {
+      await this.mvtStockRepository.save(mouvementStock);
+    } catch (error) {
+      throw new HttpException(
+        `Erreur lors de l'enregistrement du mouvement de stock: ${error.message}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+
     return produit;
   }
+
+  // async correctStockWithAudit(
+  //   id: number,
+  //   dto: CorrectStockDto,
+  // ): Promise<Produit> {
+  //   const produit = await this.produitRepository.findOne({
+  //     where: { id_produit: id },
+  //   });
+
+  //   if (!produit) {
+  //     throw new HttpException(
+  //       `Produit avec ID ${id} non trouvé`,
+  //       HttpStatus.NOT_FOUND,
+  //     );
+  //   }
+
+  //   const old_stock = produit.stock_courant;
+  //   const new_stock = dto.new_stock;
+  //   const difference = new_stock - old_stock;
+
+  //   // Déterminer le type de correction
+  //   let type_correction: string;
+  //   if (difference > 0) {
+  //     type_correction = 'ajout';
+  //   } else if (difference < 0) {
+  //     type_correction = 'diminution';
+  //   } else {
+  //     type_correction = 'verification';
+  //   }
+
+  //   // Mise à jour du stock courant
+  //   produit.stock_courant = new_stock;
+  //   produit.stock_courant_date = Date.now();
+
+  //   await this.produitRepository.save(produit);
+
+  //   // Enregistrer l'action dans la table Audit
+  //   const audit = this.auditRepository.create({
+  //     produit: produit,
+  //     stock_courant_avant: old_stock,
+  //     stock_physique: new_stock,
+  //     difference: difference,
+  //     type_correction: type_correction,
+  //     description: dto.description,
+  //     user_id: dto.user_id,
+  //     user_nom: dto.user_nom,
+  //     date_audit: new Date(),
+  //   });
+
+  //   await this.auditRepository.save(audit);
+
+  //   return produit;
+  // }
 
   async findAll(searchTerm?: string): Promise<Produit[]> {
     const query = this.produitRepository
