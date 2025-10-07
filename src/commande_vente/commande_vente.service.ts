@@ -3727,6 +3727,7 @@ export class CommandeVenteService {
       .leftJoinAndSelect('commande.client', 'client')
       .select([
         'commande.id_commande_vente',
+        'commande.id_client', // ✅ C'EST CRUCIAL !
         'commande.numero_facture_certifiee',
         'commande.date_commande_vente',
         'commande.montant_total',
@@ -3734,32 +3735,98 @@ export class CommandeVenteService {
         'commande.montant_restant',
         'client.nom',
         'client.prenom',
+        'client.id_client',
       ])
       .orderBy('commande.date_commande_vente', 'DESC')
       .getMany();
 
-    // const TIMBRE_FISCAL = 200; // CFA
-
     return invoices.map((invoice) => {
-      // Montant TTC = Montant en BD + Timbre Fiscal (arrondi)
-      // const montantTTC = Math.round(invoice.montant_total + TIMBRE_FISCAL);
       const montantTTC = Math.round(invoice.montant_total);
       const montantRestant = Math.round(montantTTC - invoice.montant_paye);
 
       return {
         id_commande_vente: invoice.id_commande_vente,
+        id_client: invoice.id_client, // ✅ RETOURNER AU NIVEAU RACINE
         numero_facture_certifiee: invoice.numero_facture_certifiee,
         date_commande_vente: invoice.date_commande_vente,
         montant_total: montantTTC,
         montant_paye: Math.round(invoice.montant_paye),
         montant_restant: montantRestant,
         client: {
+          id_client: invoice.client?.id_client,
           nom: invoice.client?.nom,
           prenom: invoice.client?.prenom,
         },
       };
     });
   }
+
+  // async getUnpaidInvoices(dto: GetUnpaidInvoicesDto) {
+  //   const { id_client, date_debut, date_fin } = dto;
+
+  //   const query = this.commandeVenteRepository
+  //     .createQueryBuilder('commande')
+  //     .where('commande.reglee = :reglee', { reglee: 0 });
+
+  //   if (id_client) {
+  //     query.andWhere('commande.id_client = :id_client', { id_client });
+  //   }
+
+  //   if (date_debut && date_fin) {
+  //     query.andWhere(
+  //       'commande.date_commande_vente BETWEEN :date_debut AND :date_fin',
+  //       { date_debut, date_fin },
+  //     );
+  //   } else if (date_debut) {
+  //     query.andWhere('commande.date_commande_vente >= :date_debut', {
+  //       date_debut,
+  //     });
+  //   } else if (date_fin) {
+  //     query.andWhere('commande.date_commande_vente <= :date_fin', { date_fin });
+  //   }
+
+  //   const invoices = await query
+  //     .leftJoinAndSelect('commande.client', 'client')
+  //     .select([
+  //       'commande.id_commande_vente',
+  //       'commande.id_client', // ✅ AJOUTER CETTE LIGNE
+  //       'commande.numero_facture_certifiee',
+  //       'commande.date_commande_vente',
+  //       'commande.montant_total',
+  //       'commande.montant_paye',
+  //       'commande.montant_restant',
+  //       'client.nom',
+  //       'client.prenom',
+  //       'client.id_client', // ✅ AJOUTER AUSSI L'ID CLIENT
+  //     ])
+  //     .orderBy('commande.date_commande_vente', 'DESC')
+  //     .getMany();
+
+  //   // const TIMBRE_FISCAL = 200; // CFA
+
+  //   return invoices.map((invoice) => {
+  //     // Montant TTC = Montant en BD + Timbre Fiscal (arrondi)
+  //     // const montantTTC = Math.round(invoice.montant_total + TIMBRE_FISCAL);
+  //     const montantTTC = Math.round(invoice.montant_total);
+  //     const montantRestant = Math.round(montantTTC - invoice.montant_paye);
+
+  //     return {
+  //       id_commande_vente: invoice.id_commande_vente,
+  //       numero_facture_certifiee: invoice.numero_facture_certifiee,
+  //       date_commande_vente: invoice.date_commande_vente,
+  //       montant_total: montantTTC,
+  //       montant_paye: Math.round(invoice.montant_paye),
+  //       montant_restant: montantRestant,
+  //       client: {
+  //         id_client: invoice.client?.id_client, // ✅ INCLURE AUSSI DANS L'OBJET CLIENT
+
+  //         nom: invoice.client?.nom,
+  //         prenom: invoice.client?.prenom,
+  //       },
+  //     };
+  //   });
+  // }
+
   async exportUnpaidInvoicesToExcel(
     dto: GetUnpaidInvoicesDto,
     res: Response,
@@ -5035,5 +5102,851 @@ export class CommandeVenteService {
         `Erreur lors de l'exportation: ${error.message}`,
       );
     }
+  }
+
+  // async exportUnpaidInvoicesByClient(
+  //   res: Response,
+  //   clientId: number,
+  //   invoices: any[],
+  // ): Promise<void> {
+  //   try {
+  //     if (!invoices || invoices.length === 0) {
+  //       throw new NotFoundException(
+  //         'Aucune facture impayée trouvée pour ce client',
+  //       );
+  //     }
+
+  //     const firstInvoice = invoices[0];
+  //     const clientName =
+  //       `${firstInvoice.client?.prenom || ''} ${firstInvoice.client?.nom || ''}`.trim();
+
+  //     const doc = new PDFDocument({ size: 'A4', margin: this.MARGINS });
+
+  //     res.setHeader('Content-Type', 'application/pdf');
+  //     const filename = `factures_impayees_${sanitizeString(clientName)}_${new Date().toISOString().split('T')[0]}.pdf`;
+  //     res.setHeader(
+  //       'Content-Disposition',
+  //       `attachment; filename="${filename}"`,
+  //     );
+
+  //     doc.pipe(res);
+
+  //     this.drawUnpaidClientHeader(
+  //       doc,
+  //       clientName,
+  //       invoices.length,
+  //       firstInvoice.client,
+  //     );
+  //     this.drawUnpaidClientTable(doc, invoices);
+  //     this.drawUnpaidClientFooter(doc, invoices);
+
+  //     doc.end();
+  //   } catch (error) {
+  //     if (!res.headersSent) {
+  //       res.status(500).json({
+  //         message: `Erreur lors de l'export: ${error.message}`,
+  //       });
+  //     }
+  //     throw new BadRequestException(
+  //       `Erreur lors de l'export: ${error.message}`,
+  //     );
+  //   }
+  // }
+
+  // private drawUnpaidClientHeader(
+  //   doc: PDFDocument,
+  //   clientName: string,
+  //   invoiceCount: number,
+  //   client: any,
+  // ): void {
+  //   const headerTop = 40;
+  //   const sectionWidth = (this.PAGE_WIDTH - 2 * this.MARGINS) / 3;
+
+  //   // Section 1: Alliance Pharma avec bordure
+  //   doc
+  //     .rect(this.MARGINS, headerTop, sectionWidth, this.HEADER_HEIGHT)
+  //     .strokeColor('black')
+  //     .stroke();
+
+  //   doc.fontSize(10).font('Helvetica-Bold');
+  //   doc.text('ALLIANCE PHARMA', this.MARGINS + 10, headerTop + 10, {
+  //     width: sectionWidth - 20,
+  //     align: 'center',
+  //   });
+
+  //   doc.fontSize(8).font('Helvetica');
+  //   doc.text('Tel: 80130610', this.MARGINS + 10, headerTop + 25, {
+  //     width: sectionWidth - 20,
+  //     align: 'center',
+  //   });
+  //   doc.text(
+  //     'RCCM: NE/NIM/01/2024/B14/00004',
+  //     this.MARGINS + 10,
+  //     headerTop + 35,
+  //     {
+  //       width: sectionWidth - 20,
+  //       align: 'center',
+  //     },
+  //   );
+  //   doc.text('NIF: 37364/R', this.MARGINS + 10, headerTop + 45, {
+  //     width: sectionWidth - 20,
+  //     align: 'center',
+  //   });
+  //   doc.text('BP: 11807 - NIAMEY', this.MARGINS + 10, headerTop + 55, {
+  //     width: sectionWidth - 20,
+  //     align: 'center',
+  //   });
+
+  //   // Section 2: Logo
+  //   doc
+  //     .rect(
+  //       this.MARGINS + sectionWidth,
+  //       headerTop,
+  //       sectionWidth,
+  //       this.HEADER_HEIGHT,
+  //     )
+  //     .strokeColor('black')
+  //     .stroke();
+
+  //   try {
+  //     doc.image(
+  //       'src/uploads/rmlogo.png',
+  //       this.MARGINS + sectionWidth + (sectionWidth - 90) / 2,
+  //       headerTop + 10,
+  //       { width: 90 },
+  //     );
+  //   } catch (error) {
+  //     doc.fontSize(10).font('Helvetica-Bold');
+  //     doc.text('LOGO', this.MARGINS + sectionWidth + 10, headerTop + 40, {
+  //       width: sectionWidth - 20,
+  //       align: 'center',
+  //     });
+  //   }
+
+  //   // Section 3: Informations document
+  //   doc
+  //     .rect(
+  //       this.MARGINS + 2 * sectionWidth,
+  //       headerTop,
+  //       sectionWidth,
+  //       this.HEADER_HEIGHT,
+  //     )
+  //     .strokeColor('black')
+  //     .stroke();
+
+  //   doc.fontSize(9).font('Helvetica-Bold');
+  //   doc.text(
+  //     'RELEVÉ DES',
+  //     this.MARGINS + 2 * sectionWidth + 10,
+  //     headerTop + 15,
+  //     { width: sectionWidth - 20, align: 'center' },
+  //   );
+  //   doc.text(
+  //     'FACTURES IMPAYÉES',
+  //     this.MARGINS + 2 * sectionWidth + 10,
+  //     headerTop + 28,
+  //     { width: sectionWidth - 20, align: 'center' },
+  //   );
+
+  //   doc.fontSize(8).font('Helvetica');
+  //   doc.text(
+  //     `Date: ${new Date().toLocaleDateString('fr-FR')}`,
+  //     this.MARGINS + 2 * sectionWidth + 10,
+  //     headerTop + 48,
+  //     { width: sectionWidth - 20, align: 'center' },
+  //   );
+
+  //   // Nombre de factures en rouge
+  //   doc.fillColor('#FF0000').fontSize(9).font('Helvetica-Bold');
+  //   doc.text(
+  //     `${invoiceCount} Facture${invoiceCount > 1 ? 's' : ''}`,
+  //     this.MARGINS + 2 * sectionWidth + 10,
+  //     headerTop + 63,
+  //     { width: sectionWidth - 20, align: 'center' },
+  //   );
+  //   doc.fillColor('black');
+
+  //   // Séparateurs verticaux
+  //   doc
+  //     .moveTo(this.MARGINS + sectionWidth, headerTop)
+  //     .lineTo(this.MARGINS + sectionWidth, headerTop + this.HEADER_HEIGHT)
+  //     .stroke();
+  //   doc
+  //     .moveTo(this.MARGINS + 2 * sectionWidth, headerTop)
+  //     .lineTo(this.MARGINS + 2 * sectionWidth, headerTop + this.HEADER_HEIGHT)
+  //     .stroke();
+
+  //   // Ligne de séparation
+  //   const separatorY = headerTop + this.HEADER_HEIGHT + 10;
+  //   doc
+  //     .moveTo(this.MARGINS, separatorY)
+  //     .lineTo(this.PAGE_WIDTH - this.MARGINS, separatorY)
+  //     .strokeColor('black')
+  //     .stroke();
+
+  //   // Informations client avec style encadré
+  //   const clientInfoTop = separatorY + 15;
+  //   const clientBoxHeight = 50;
+
+  //   doc
+  //     .rect(
+  //       this.MARGINS,
+  //       clientInfoTop,
+  //       this.PAGE_WIDTH - 2 * this.MARGINS,
+  //       clientBoxHeight,
+  //     )
+  //     .fillAndStroke('#F8F9FA', 'black');
+
+  //   doc.fontSize(10).font('Helvetica-Bold').fillColor('black');
+  //   doc.text('INFORMATIONS CLIENT', this.MARGINS + 10, clientInfoTop + 8);
+
+  //   doc.fontSize(9).font('Helvetica');
+  //   doc.text(`Nom: ${clientName}`, this.MARGINS + 10, clientInfoTop + 25);
+
+  //   if (client?.nif) {
+  //     doc.text(`NIF: ${client.nif}`, this.MARGINS + 250, clientInfoTop + 25);
+  //   }
+
+  //   if (client?.telephone) {
+  //     doc.text(
+  //       `Téléphone: ${client.telephone}`,
+  //       this.MARGINS + 10,
+  //       clientInfoTop + 38,
+  //     );
+  //   }
+  // }
+
+  // private drawUnpaidClientTable(doc: PDFDocument, invoices: any[]): void {
+  //   let currentY = this.MARGINS + 200;
+
+  //   const headers = [
+  //     'Date',
+  //     'N° Facture',
+  //     'Montant Total',
+  //     'Montant Payé',
+  //     'Reste à Payer',
+  //   ];
+  //   const columnWidths = [85, 110, 105, 105, 105];
+  //   const startX = this.MARGINS;
+
+  //   // En-têtes du tableau avec style moderne (sans bordures verticales)
+  //   doc.fontSize(9).font('Helvetica-Bold').fillColor('white');
+
+  //   // Dessiner le fond de l'en-tête d'un seul bloc
+  //   const totalWidth = columnWidths.reduce((sum, width) => sum + width, 0);
+  //   doc
+  //     .rect(startX, currentY, totalWidth, 28)
+  //     .fillAndStroke('#2C3E50', '#2C3E50');
+
+  //   let currentX = startX;
+  //   headers.forEach((header, index) => {
+  //     doc.fillColor('white');
+  //     doc.text(header, currentX + 5, currentY + 9, {
+  //       width: columnWidths[index] - 10,
+  //       align: 'center',
+  //     });
+  //     currentX += columnWidths[index];
+  //   });
+
+  //   currentY += 28;
+
+  //   // Lignes de données
+  //   doc.font('Helvetica').fontSize(8).fillColor('black');
+
+  //   invoices.forEach((invoice, index) => {
+  //     if (currentY > doc.page.height - 180) {
+  //       doc.addPage();
+  //       currentY = this.MARGINS;
+
+  //       // Redessiner l'en-tête du tableau sur la nouvelle page (sans bordures verticales)
+  //       currentX = startX;
+  //       doc.fontSize(9).font('Helvetica-Bold').fillColor('white');
+  //       const totalWidth = columnWidths.reduce((sum, width) => sum + width, 0);
+  //       doc
+  //         .rect(startX, currentY, totalWidth, 28)
+  //         .fillAndStroke('#2C3E50', '#2C3E50');
+
+  //       currentX = startX;
+  //       headers.forEach((header, idx) => {
+  //         doc.fillColor('white');
+  //         doc.text(header, currentX + 5, currentY + 9, {
+  //           width: columnWidths[idx] - 10,
+  //           align: 'center',
+  //         });
+  //         currentX += columnWidths[idx];
+  //       });
+  //       currentY += 28;
+  //       doc.font('Helvetica').fontSize(8).fillColor('black');
+  //     }
+
+  //     const montantRestant = invoice.montant_restant || 0;
+  //     const rowData = [
+  //       new Date(invoice.date_commande_vente).toLocaleDateString('fr-FR'),
+  //       invoice.numero_facture_certifiee || 'N/A',
+  //       `${(invoice.montant_total || 0).toLocaleString('fr-FR', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).replace(/\s/g, ' ')}`,
+  //       `${(invoice.montant_paye || 0).toLocaleString('fr-FR', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).replace(/\s/g, ' ')}`,
+  //       `${montantRestant.toLocaleString('fr-FR', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).replace(/\s/g, ' ')}`,
+  //     ];
+
+  //     currentX = startX;
+  //     const fillColor = index % 2 === 0 ? '#FFFFFF' : '#F8F9FA';
+  //     const rowHeight = 22;
+  //     const totalRowWidth = columnWidths.reduce((sum, width) => sum + width, 0);
+
+  //     // Dessiner le fond de la ligne (sans bordures verticales)
+  //     doc
+  //       .rect(startX, currentY, totalRowWidth, rowHeight)
+  //       .fillAndStroke(fillColor, fillColor);
+
+  //     // Ligne de séparation horizontale légère en bas
+  //     doc
+  //       .moveTo(startX, currentY + rowHeight)
+  //       .lineTo(startX + totalRowWidth, currentY + rowHeight)
+  //       .strokeColor('#EEEEEE')
+  //       .lineWidth(0.5)
+  //       .stroke();
+
+  //     rowData.forEach((data, colIndex) => {
+  //       const textColor =
+  //         colIndex === 4 && montantRestant > 0 ? '#D32F2F' : 'black';
+  //       const fontStyle =
+  //         colIndex === 4 && montantRestant > 0 ? 'Helvetica-Bold' : 'Helvetica';
+
+  //       doc.fillColor(textColor).font(fontStyle);
+  //       doc.text(data, currentX + 5, currentY + 6, {
+  //         width: columnWidths[colIndex] - 10,
+  //         align: colIndex >= 2 ? 'right' : 'left',
+  //       });
+
+  //       currentX += columnWidths[colIndex];
+  //     });
+
+  //     currentY += rowHeight;
+  //   });
+  // }
+
+  // private drawUnpaidClientFooter(doc: PDFDocument, invoices: any[]): void {
+  //   const totalMontantTotal = invoices.reduce(
+  //     (sum, invoice) => sum + (invoice.montant_total || 0),
+  //     0,
+  //   );
+  //   const totalMontantPaye = invoices.reduce(
+  //     (sum, invoice) => sum + (invoice.montant_paye || 0),
+  //     0,
+  //   );
+  //   const totalMontantRestant = invoices.reduce(
+  //     (sum, invoice) => sum + (invoice.montant_restant || 0),
+  //     0,
+  //   );
+
+  //   const footerY = doc.page.height - 160;
+
+  //   // Ligne de séparation épaisse
+  //   doc
+  //     .moveTo(this.MARGINS, footerY)
+  //     .lineTo(this.PAGE_WIDTH - this.MARGINS, footerY)
+  //     .strokeColor('black')
+  //     .lineWidth(2)
+  //     .stroke();
+
+  //   // Box pour les totaux
+  //   const summaryBoxTop = footerY + 15;
+  //   const summaryBoxHeight = 85;
+
+  //   doc
+  //     .rect(
+  //       this.MARGINS,
+  //       summaryBoxTop,
+  //       this.PAGE_WIDTH - 2 * this.MARGINS,
+  //       summaryBoxHeight,
+  //     )
+  //     .fillAndStroke('#F8F9FA', 'black');
+
+  //   doc.fontSize(11).font('Helvetica-Bold').fillColor('black');
+  //   doc.text('RÉSUMÉ FINANCIER', this.MARGINS + 10, summaryBoxTop + 8);
+
+  //   doc.fontSize(9).font('Helvetica');
+  //   doc.text(
+  //     `Nombre de factures: ${invoices.length}`,
+  //     this.MARGINS + 10,
+  //     summaryBoxTop + 28,
+  //   );
+
+  //   doc.text(`Total des factures:`, this.MARGINS + 10, summaryBoxTop + 43);
+  //   doc.font('Helvetica-Bold');
+  //   doc.text(
+  //     `${totalMontantTotal.toLocaleString('fr-FR', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).replace(/\s/g, ' ')} FCFA`,
+  //     this.MARGINS + 120,
+  //     summaryBoxTop + 43,
+  //   );
+
+  //   doc.font('Helvetica');
+  //   doc.text(`Total payé:`, this.MARGINS + 10, summaryBoxTop + 58);
+  //   doc.font('Helvetica-Bold');
+  //   doc.text(
+  //     `${totalMontantPaye.toLocaleString('fr-FR', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).replace(/\s/g, ' ')} FCFA`,
+  //     this.MARGINS + 120,
+  //     summaryBoxTop + 58,
+  //   );
+
+  //   // Montant restant dans un box rouge distinct
+  //   const debtBoxTop = summaryBoxTop + 73;
+  //   const debtBoxWidth = this.PAGE_WIDTH - 2 * this.MARGINS;
+
+  //   doc
+  //     .rect(this.MARGINS, debtBoxTop, debtBoxWidth, 22)
+  //     .fillAndStroke('#FFEBEE', '#D32F2F')
+  //     .lineWidth(2)
+  //     .stroke();
+
+  //   doc.fillColor('#D32F2F').fontSize(11).font('Helvetica-Bold');
+  //   doc.text('MONTANT TOTAL DÛ:', this.MARGINS + 10, debtBoxTop + 6);
+
+  //   doc.fontSize(12);
+  //   doc.text(
+  //     `${totalMontantRestant.toLocaleString('fr-FR')} FCFA`,
+  //     this.MARGINS + 150,
+  //     debtBoxTop + 5,
+  //   );
+
+  //   doc.fillColor('black');
+
+  //   // Note de bas de page
+  //   doc
+  //     .fontSize(7)
+  //     .font('Helvetica-Oblique')
+  //     .fillColor('#666666')
+  //     .text(
+  //       'Ce relevé a été généré automatiquement. Pour toute réclamation, veuillez nous contacter au 80130610.',
+  //       this.MARGINS,
+  //       doc.page.height - 25,
+  //       {
+  //         width: this.PAGE_WIDTH - 2 * this.MARGINS,
+  //         align: 'center',
+  //       },
+  //     );
+  // }
+
+  async exportUnpaidInvoicesByClient(
+    res: Response,
+    clientId: number,
+    invoices: any[],
+  ): Promise<void> {
+    try {
+      if (!invoices || invoices.length === 0) {
+        throw new NotFoundException(
+          'Aucune facture impayée trouvée pour ce client',
+        );
+      }
+
+      const firstInvoice = invoices[0];
+      const clientName =
+        `${firstInvoice.client?.prenom || ''} ${firstInvoice.client?.nom || ''}`.trim();
+
+      const doc = new PDFDocument({ size: 'A4', margin: this.MARGINS });
+
+      res.setHeader('Content-Type', 'application/pdf');
+      const filename = `factures_impayees_${sanitizeString(clientName)}_${new Date().toISOString().split('T')[0]}.pdf`;
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="${filename}"`,
+      );
+
+      doc.pipe(res);
+
+      this.drawUnpaidClientHeader(
+        doc,
+        clientName,
+        invoices.length,
+        firstInvoice.client,
+      );
+      this.drawUnpaidClientTable(doc, invoices);
+      this.drawUnpaidClientFooter(doc, invoices);
+
+      doc.end();
+    } catch (error) {
+      if (!res.headersSent) {
+        res.status(500).json({
+          message: `Erreur lors de l'export: ${error.message}`,
+        });
+      }
+      throw new BadRequestException(
+        `Erreur lors de l'export: ${error.message}`,
+      );
+    }
+  }
+
+  private drawUnpaidClientHeader(
+    doc: PDFDocument,
+    clientName: string,
+    invoiceCount: number,
+    client: any,
+  ): void {
+    const headerTop = 40;
+    const sectionWidth = (this.PAGE_WIDTH - 2 * this.MARGINS) / 3;
+
+    // Section 1: Alliance Pharma avec bordure
+    doc
+      .rect(this.MARGINS, headerTop, sectionWidth, this.HEADER_HEIGHT)
+      .strokeColor('black')
+      .stroke();
+
+    doc.fontSize(10).font('Helvetica-Bold');
+    doc.text('ALLIANCE PHARMA', this.MARGINS + 10, headerTop + 10, {
+      width: sectionWidth - 20,
+      align: 'center',
+    });
+
+    doc.fontSize(8).font('Helvetica');
+    doc.text('Tel: 80130610', this.MARGINS + 10, headerTop + 25, {
+      width: sectionWidth - 20,
+      align: 'center',
+    });
+    doc.text(
+      'RCCM: NE/NIM/01/2024/B14/00004',
+      this.MARGINS + 10,
+      headerTop + 35,
+      {
+        width: sectionWidth - 20,
+        align: 'center',
+      },
+    );
+    doc.text('NIF: 37364/R', this.MARGINS + 10, headerTop + 45, {
+      width: sectionWidth - 20,
+      align: 'center',
+    });
+    doc.text('BP: 11807 - NIAMEY', this.MARGINS + 10, headerTop + 55, {
+      width: sectionWidth - 20,
+      align: 'center',
+    });
+
+    // Section 2: Logo
+    doc
+      .rect(
+        this.MARGINS + sectionWidth,
+        headerTop,
+        sectionWidth,
+        this.HEADER_HEIGHT,
+      )
+      .strokeColor('black')
+      .stroke();
+
+    try {
+      doc.image(
+        'src/uploads/rmlogo.png',
+        this.MARGINS + sectionWidth + (sectionWidth - 90) / 2,
+        headerTop + 10,
+        { width: 90 },
+      );
+    } catch (error) {
+      doc.fontSize(10).font('Helvetica-Bold');
+      doc.text('LOGO', this.MARGINS + sectionWidth + 10, headerTop + 40, {
+        width: sectionWidth - 20,
+        align: 'center',
+      });
+    }
+
+    // Section 3: Informations document
+    doc
+      .rect(
+        this.MARGINS + 2 * sectionWidth,
+        headerTop,
+        sectionWidth,
+        this.HEADER_HEIGHT,
+      )
+      .strokeColor('black')
+      .stroke();
+
+    doc.fontSize(9).font('Helvetica-Bold');
+    doc.text(
+      'RELEVÉ DES',
+      this.MARGINS + 2 * sectionWidth + 10,
+      headerTop + 15,
+      { width: sectionWidth - 20, align: 'center' },
+    );
+    doc.text(
+      'FACTURES IMPAYÉES',
+      this.MARGINS + 2 * sectionWidth + 10,
+      headerTop + 28,
+      { width: sectionWidth - 20, align: 'center' },
+    );
+
+    doc.fontSize(8).font('Helvetica');
+    doc.text(
+      `Date: ${new Date().toLocaleDateString('fr-FR')}`,
+      this.MARGINS + 2 * sectionWidth + 10,
+      headerTop + 48,
+      { width: sectionWidth - 20, align: 'center' },
+    );
+
+    // Nombre de factures en rouge
+    doc.fillColor('#FF0000').fontSize(9).font('Helvetica-Bold');
+    doc.text(
+      `${invoiceCount} Facture${invoiceCount > 1 ? 's' : ''}`,
+      this.MARGINS + 2 * sectionWidth + 10,
+      headerTop + 63,
+      { width: sectionWidth - 20, align: 'center' },
+    );
+    doc.fillColor('black');
+
+    // Séparateurs verticaux
+    doc
+      .moveTo(this.MARGINS + sectionWidth, headerTop)
+      .lineTo(this.MARGINS + sectionWidth, headerTop + this.HEADER_HEIGHT)
+      .stroke();
+    doc
+      .moveTo(this.MARGINS + 2 * sectionWidth, headerTop)
+      .lineTo(this.MARGINS + 2 * sectionWidth, headerTop + this.HEADER_HEIGHT)
+      .stroke();
+
+    // Ligne de séparation
+    const separatorY = headerTop + this.HEADER_HEIGHT + 10;
+    doc
+      .moveTo(this.MARGINS, separatorY)
+      .lineTo(this.PAGE_WIDTH - this.MARGINS, separatorY)
+      .strokeColor('black')
+      .stroke();
+
+    // Informations client avec style encadré
+    const clientInfoTop = separatorY + 15;
+    const clientBoxHeight = 50;
+
+    doc
+      .rect(
+        this.MARGINS,
+        clientInfoTop,
+        this.PAGE_WIDTH - 2 * this.MARGINS,
+        clientBoxHeight,
+      )
+      .fillAndStroke('#F8F9FA', 'black');
+
+    doc.fontSize(10).font('Helvetica-Bold').fillColor('black');
+    doc.text('INFORMATIONS CLIENT', this.MARGINS + 10, clientInfoTop + 8);
+
+    doc.fontSize(9).font('Helvetica');
+    doc.text(`Nom: ${clientName}`, this.MARGINS + 10, clientInfoTop + 25);
+
+    if (client?.nif) {
+      doc.text(`NIF: ${client.nif}`, this.MARGINS + 250, clientInfoTop + 25);
+    }
+
+    if (client?.telephone) {
+      doc.text(
+        `Téléphone: ${client.telephone}`,
+        this.MARGINS + 10,
+        clientInfoTop + 38,
+      );
+    }
+  }
+
+  private drawUnpaidClientTable(doc: PDFDocument, invoices: any[]): void {
+    let currentY = this.MARGINS + 200;
+
+    const headers = [
+      'Date',
+      'N° Facture',
+      'Montant Total',
+      'Montant Payé',
+      'Reste à Payer',
+    ];
+    const columnWidths = [85, 110, 105, 105, 105];
+    const startX = this.MARGINS;
+
+    // En-têtes du tableau avec style moderne (sans bordures verticales)
+    doc.fontSize(9).font('Helvetica-Bold').fillColor('white');
+
+    // Dessiner le fond de l'en-tête d'un seul bloc
+    const totalWidth = columnWidths.reduce((sum, width) => sum + width, 0);
+    doc
+      .rect(startX, currentY, totalWidth, 28)
+      .fillAndStroke('#2C3E50', '#2C3E50');
+
+    let currentX = startX;
+    headers.forEach((header, index) => {
+      doc.fillColor('white');
+      doc.text(header, currentX + 5, currentY + 9, {
+        width: columnWidths[index] - 10,
+        align: 'center',
+      });
+      currentX += columnWidths[index];
+    });
+
+    currentY += 28;
+
+    // Lignes de données
+    doc.font('Helvetica').fontSize(8).fillColor('black');
+
+    invoices.forEach((invoice, index) => {
+      if (currentY > doc.page.height - 180) {
+        doc.addPage();
+        currentY = this.MARGINS;
+
+        // Redessiner l'en-tête du tableau sur la nouvelle page (sans bordures verticales)
+        currentX = startX;
+        doc.fontSize(9).font('Helvetica-Bold').fillColor('white');
+        const totalWidth = columnWidths.reduce((sum, width) => sum + width, 0);
+        doc
+          .rect(startX, currentY, totalWidth, 28)
+          .fillAndStroke('#2C3E50', '#2C3E50');
+
+        currentX = startX;
+        headers.forEach((header, idx) => {
+          doc.fillColor('white');
+          doc.text(header, currentX + 5, currentY + 9, {
+            width: columnWidths[idx] - 10,
+            align: 'center',
+          });
+          currentX += columnWidths[idx];
+        });
+        currentY += 28;
+        doc.font('Helvetica').fontSize(8).fillColor('black');
+      }
+
+      const montantRestant = invoice.montant_restant || 0;
+      const rowData = [
+        new Date(invoice.date_commande_vente).toLocaleDateString('fr-FR'),
+        invoice.numero_facture_certifiee || 'N/A',
+        `${(invoice.montant_total || 0).toLocaleString('fr-FR', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).replace(/\s/g, ' ')}`,
+        `${(invoice.montant_paye || 0).toLocaleString('fr-FR', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).replace(/\s/g, ' ')}`,
+        `${montantRestant.toLocaleString('fr-FR', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).replace(/\s/g, ' ')}`,
+      ];
+
+      currentX = startX;
+      const fillColor = index % 2 === 0 ? '#FFFFFF' : '#F8F9FA';
+      const rowHeight = 22;
+      const totalRowWidth = columnWidths.reduce((sum, width) => sum + width, 0);
+
+      // Dessiner le fond de la ligne (sans bordures verticales)
+      doc
+        .rect(startX, currentY, totalRowWidth, rowHeight)
+        .fillAndStroke(fillColor, fillColor);
+
+      // Ligne de séparation horizontale légère en bas
+      doc
+        .moveTo(startX, currentY + rowHeight)
+        .lineTo(startX + totalRowWidth, currentY + rowHeight)
+        .strokeColor('#EEEEEE')
+        .lineWidth(0.5)
+        .stroke();
+
+      rowData.forEach((data, colIndex) => {
+        const textColor =
+          colIndex === 4 && montantRestant > 0 ? '#D32F2F' : 'black';
+        const fontStyle =
+          colIndex === 4 && montantRestant > 0 ? 'Helvetica-Bold' : 'Helvetica';
+
+        doc.fillColor(textColor).font(fontStyle);
+        doc.text(data, currentX + 5, currentY + 6, {
+          width: columnWidths[colIndex] - 10,
+          align: colIndex >= 2 ? 'right' : 'left',
+        });
+
+        currentX += columnWidths[colIndex];
+      });
+
+      currentY += rowHeight;
+    });
+  }
+
+  private drawUnpaidClientFooter(doc: PDFDocument, invoices: any[]): void {
+    const totalMontantTotal = invoices.reduce(
+      (sum, invoice) => sum + (invoice.montant_total || 0),
+      0,
+    );
+    const totalMontantPaye = invoices.reduce(
+      (sum, invoice) => sum + (invoice.montant_paye || 0),
+      0,
+    );
+    const totalMontantRestant = invoices.reduce(
+      (sum, invoice) => sum + (invoice.montant_restant || 0),
+      0,
+    );
+
+    const footerY = doc.page.height - 160;
+
+    // Ligne de séparation épaisse
+    doc
+      .moveTo(this.MARGINS, footerY)
+      .lineTo(this.PAGE_WIDTH - this.MARGINS, footerY)
+      .strokeColor('black')
+      .lineWidth(2)
+      .stroke();
+
+    // Box pour les totaux
+    const summaryBoxTop = footerY + 15;
+    const summaryBoxHeight = 85;
+
+    doc
+      .rect(
+        this.MARGINS,
+        summaryBoxTop,
+        this.PAGE_WIDTH - 2 * this.MARGINS,
+        summaryBoxHeight,
+      )
+      .fillAndStroke('#F8F9FA', 'black');
+
+    doc.fontSize(11).font('Helvetica-Bold').fillColor('black');
+    doc.text('RÉSUMÉ FINANCIER', this.MARGINS + 10, summaryBoxTop + 8);
+
+    doc.fontSize(9).font('Helvetica');
+    doc.text(
+      `Nombre de factures: ${invoices.length}`,
+      this.MARGINS + 10,
+      summaryBoxTop + 28,
+    );
+
+    doc.text(`Total des factures:`, this.MARGINS + 10, summaryBoxTop + 43);
+    doc.font('Helvetica-Bold');
+    doc.text(
+      `${totalMontantTotal.toLocaleString('fr-FR', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).replace(/\s/g, ' ')} FCFA`,
+      this.MARGINS + 120,
+      summaryBoxTop + 43,
+    );
+
+    doc.font('Helvetica');
+    doc.text(`Total payé:`, this.MARGINS + 10, summaryBoxTop + 58);
+    doc.font('Helvetica-Bold');
+    doc.text(
+      `${totalMontantPaye.toLocaleString('fr-FR', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).replace(/\s/g, ' ')} FCFA`,
+      this.MARGINS + 120,
+      summaryBoxTop + 58,
+    );
+
+    // Montant restant dans un box rouge distinct
+    const debtBoxTop = summaryBoxTop + 73;
+    const debtBoxWidth = this.PAGE_WIDTH - 2 * this.MARGINS;
+
+    doc
+      .rect(this.MARGINS, debtBoxTop, debtBoxWidth, 22)
+      .fillAndStroke('#FFEBEE', '#D32F2F')
+      .lineWidth(2)
+      .stroke();
+
+    doc.fillColor('#D32F2F').fontSize(11).font('Helvetica-Bold');
+    doc.text('MONTANT TOTAL DÛ:', this.MARGINS + 10, debtBoxTop + 6);
+
+    doc.fontSize(12);
+    doc.text(
+      `${totalMontantRestant.toLocaleString('fr-FR', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).replace(/\s/g, ' ')} FCFA`,
+      this.MARGINS + 150,
+      debtBoxTop + 5,
+    );
+
+    doc.fillColor('black');
+
+    // Note de bas de page
+    // doc
+    //   .fontSize(7)
+    //   .font('Helvetica-Oblique')
+    //   .fillColor('#666666')
+    //   .text(
+    //     'Ce relevé a été généré automatiquement. Pour toute réclamation, veuillez nous contacter au 80130610.',
+    //     this.MARGINS,
+    //     doc.page.height - 25,
+    //     {
+    //       width: this.PAGE_WIDTH - 2 * this.MARGINS,
+    //       align: 'center',
+    //     },
+    //   );
   }
 }

@@ -51,6 +51,46 @@ class DateRangeDto {
 export class CommandeVenteController {
   constructor(private readonly commandeVenteService: CommandeVenteService) {}
 
+  // @Auth(AuthType.None)
+  // @Get('export-unpaid-by-client/:clientId')
+  // async exportUnpaidInvoicesByClient(
+  //   @Param('clientId') clientId: number,
+  //   @Query() dto: GetUnpaidInvoicesDto,
+  //   @Res() res: Response,
+  // ): Promise<void> {
+  //   // Récupérer les factures impayées pour ce client
+  //   const invoices = await this.commandeVenteService.getUnpaidInvoices({
+  //     ...dto,
+  //     id_client: clientId,
+  //   });
+
+  //   // Générer le PDF
+  //   await this.commandeVenteService.exportUnpaidInvoicesByClient(
+  //     res,
+  //     clientId,
+  //     invoices,
+  //   );
+  // }
+
+  @Auth(AuthType.None)
+  @Post('export-unpaid-by-client')
+  async exportUnpaidInvoicesByClientPost(
+    @Body() body: { clientId: number; invoices: any[] },
+    @Res() res: Response,
+  ): Promise<void> {
+    const { clientId, invoices } = body;
+
+    if (!invoices || invoices.length === 0) {
+      throw new BadRequestException('Aucune facture à exporter');
+    }
+
+    await this.commandeVenteService.exportUnpaidInvoicesByClient(
+      res,
+      clientId,
+      invoices,
+    );
+  }
+
   @Get('supplier-stats')
   async getSupplierProductStats(@Query() dto: GetSupplierStatsDto) {
     return this.commandeVenteService.getSupplierProductStats(dto);
@@ -164,18 +204,7 @@ export class CommandeVenteController {
   ) {
     return this.commandeVenteService.getUnpaidInvoices(dto);
   }
-  // @Get('unpaid-facture')
-  // async getUnpaidFacture(
-  //   @Query(
-  //     new ValidationPipe({
-  //       transform: true,
-  //       transformOptions: { enableImplicitConversion: true },
-  //     }),
-  //   )
-  //   dto: GetUnpaidInvoicesDto,
-  // ) {
-  //   return this.commandeVenteService.getUnpaidInvoices(dto);
-  // }
+
   @Get('product-sales-history')
   async getProductSalesHistory(
     @Query('id_produit', ParseIntPipe) id_produit: number,

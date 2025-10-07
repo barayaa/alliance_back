@@ -86,7 +86,7 @@ import { MouvementNitaModule } from './mouvement_nita/mouvement_nita.module';
       // username: 'root',
       // password: 'root',
       // database: 'mercredi_db',
-      migrations: ['src/migrations/*.ts'],
+      // migrations: ['src/migrations/*.ts'],
       autoLoadEntities: true,
       synchronize: false,
       // ssl: {
