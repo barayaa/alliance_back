@@ -64,6 +64,8 @@ import { parseJawsDbUrl } from './utils/db_url-parser';
 import { AuditModule } from './audit/audit.module';
 import { MouvementCaisseModule } from './mouvement_caisse/mouvement_caisse.module';
 import { MouvementCompteModule } from './mouvement_compte/mouvement_compte.module';
+import { NitaModule } from './nita/nita.module';
+import { MouvementNitaModule } from './mouvement_nita/mouvement_nita.module';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -73,17 +75,11 @@ import { MouvementCompteModule } from './mouvement_compte/mouvement_compte.modul
     ConfigModule.forRoot({}),
     TypeOrmModule.forRoot({
       type: 'mariadb',
-      host: 'y2w3wxldca8enczv.cbetxkdyhwsb.us-east-1.rds.amazonaws.com',
+      host: 'localhost',
       port: 3306,
-      username: 'eue0kgjy0g754e2c',
-      password: 'j1lx54lu8ep9bszb',
-      database: 'w14j56cmvoln8hwx',
-      // type: 'mariadb',
-      // host: 'localhost',
-      // port: 3306,
-      // username: 'root',
-      // password: 'root',
-      // database: 'mercredi_db',
+      username: 'root',
+      password: 'root',
+      database: 'mercredi_db',
       migrations: ['src/migrations/*.ts'],
       autoLoadEntities: true,
       synchronize: false,
@@ -156,6 +152,8 @@ import { MouvementCompteModule } from './mouvement_compte/mouvement_compte.modul
     AuditModule,
     MouvementCaisseModule,
     MouvementCompteModule,
+    NitaModule,
+    MouvementNitaModule,
   ],
   controllers: [AppController],
   providers: [AppService],

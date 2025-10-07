@@ -54,4 +54,8 @@ export class CreateDepenseDto {
   @IsOptional()
   @IsInt()
   id_caisse?: number;
+
+  @IsInt()
+  @IsOptional()
+  id_nita?: number;
 }

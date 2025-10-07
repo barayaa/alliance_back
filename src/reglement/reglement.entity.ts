@@ -11,6 +11,7 @@ import { CommandeVente } from '../commande_vente/commande_vente.entity';
 import { TypeReglement } from 'src/type_reglement/type_reglement.entity';
 import { Caisse } from 'src/caisse/entities/caisse.entity';
 import { Compte } from 'src/comptes/entities/compte.entity';
+import { Nita } from 'src/nita/entities/nita.entity';
 
 @Entity('reglement')
 export class Reglement {
@@ -79,4 +80,14 @@ export class Reglement {
   })
   @JoinColumn({ name: 'id_compte', referencedColumnName: 'id_compte' })
   compte?: Compte;
+
+  @Column({ type: 'int', nullable: true })
+  id_nita?: number;
+
+  @ManyToOne(() => Nita, (nita) => nita.mouvements, {
+    eager: false,
+    nullable: true,
+  })
+  @JoinColumn({ name: 'id_nita', referencedColumnName: 'id_nita' })
+  nita?: Nita;
 }

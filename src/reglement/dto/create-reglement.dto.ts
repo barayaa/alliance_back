@@ -23,4 +23,8 @@ export class CreateReglementDto {
   @IsInt({ message: 'id_compte doit être un entier' })
   @IsOptional()
   id_compte?: number;
+
+  @IsInt({ message: 'id_nita doit être un entier' })
+  @IsOptional()
+  id_nita?: number;
 }

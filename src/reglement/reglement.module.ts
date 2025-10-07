@@ -8,6 +8,7 @@ import { Client } from '../client/client.entity';
 import { Caisse } from 'src/caisse/entities/caisse.entity';
 import { Compte } from 'src/comptes/entities/compte.entity';
 import { TypeReglement } from 'src/type_reglement/type_reglement.entity';
+import { Nita } from 'src/nita/entities/nita.entity';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { TypeReglement } from 'src/type_reglement/type_reglement.entity';
       Caisse,
       Compte,
       TypeReglement,
+      Nita,
     ]),
   ],
   controllers: [ReglementController],

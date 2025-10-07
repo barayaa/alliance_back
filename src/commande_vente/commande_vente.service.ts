@@ -1978,6 +1978,265 @@ export class CommandeVenteService {
     }
   }
 
+  // async create(dto: CreateCommandeVenteDto): Promise<CommandeVente> {
+  //   console.log('Payload reçu:', JSON.stringify(dto, null, 2));
+
+  //   return this.commandeVenteRepository.manager.transaction(async (manager) => {
+  //     try {
+  //       // Valider le client
+  //       const client = await manager.findOneBy(Client, {
+  //         id_client: dto.id_client,
+  //       });
+  //       if (!client) {
+  //         throw new BadRequestException(
+  //           `Client avec id ${dto.id_client} non trouvé`,
+  //         );
+  //       }
+
+  //       // Gérer l'ISB selon le type_isb
+  //       let isbRate = 0;
+  //       if (dto.type_isb) {
+  //         // Récupérer le taux ISB depuis la base
+  //         const isbs = await manager.find(Isb, { select: ['isb', 'taux'] });
+  //         const isbRecord = isbs.find((isb) => isb.isb === dto.type_isb);
+  //         if (isbRecord) {
+  //           isbRate = parseFloat(isbRecord.taux) || 0;
+  //         } else {
+  //           // Mapping par défaut si pas trouvé en DB
+  //           const isbMapping: { [key: string]: number } = {
+  //             '0%': 0,
+  //             '2%': 0.02,
+  //             '5%': 0.05,
+  //           };
+  //           isbRate = isbMapping[dto.type_isb] || 0.02; // 2% par défaut
+  //         }
+  //       }
+  //       console.log('Taux ISB appliqué:', isbRate, 'pour type:', dto.type_isb);
+
+  //       // TVA : utiliser celle fournie ou 0
+  //       const tvaCommande =
+  //         dto.tva != null && !isNaN(dto.tva) && dto.tva >= 0 ? dto.tva : 0;
+  //       console.log('TVA générale appliquée:', tvaCommande, '%');
+
+  //       // Génération numéro facture
+  //       const currentYear = new Date().getFullYear();
+  //       const lastCommande = await manager.findOne(CommandeVente, {
+  //         where: {
+  //           type_facture: 'FV',
+  //           numero_facture_certifiee: Like(`%-${currentYear}`),
+  //         },
+  //         order: { numero_seq: 'DESC' },
+  //       });
+  //       const numero_seq = lastCommande ? lastCommande.numero_seq + 1 : 1;
+  //       const numero_facture_certifiee = `${numero_seq.toString().padStart(4, '0')}-${currentYear}`;
+
+  //       // Vérifier unicité
+  //       const existingCommande = await manager.findOne(CommandeVente, {
+  //         where: { numero_facture_certifiee },
+  //       });
+  //       if (existingCommande) {
+  //         throw new BadRequestException(
+  //           `Une commande existe déjà avec le numéro de facture ${numero_facture_certifiee}`,
+  //         );
+  //       }
+
+  //       // Créer la commande (temporairement avec valeurs par défaut)
+  //       const commande = manager.create(CommandeVente, {
+  //         date_commande_vente: new Date(dto.date_commande_vente),
+  //         montant_total: 0, // Sera calculé
+  //         montant_paye: 0,
+  //         montant_restant: 0, // Sera calculé
+  //         remise: 0, // Sera calculé
+  //         validee: 1,
+  //         statut: 0,
+  //         id_client: dto.id_client,
+  //         client,
+  //         reglee: 0,
+  //         moyen_reglement: 0,
+  //         type_reglement: dto.type_reglement || 'E',
+  //         tva: 0, // Sera le montant TVA calculé
+  //         type_isb: dto.type_isb || '2%',
+  //         isb: 0, // Sera calculé
+  //         avoir: 0,
+  //         login: dto.login,
+  //         type_facture: 'FV',
+  //         reponse_mcf: '',
+  //         qrcode: '',
+  //         client_vd: dto.client_vd || '',
+  //         nif_vd: dto.nif_vd || '',
+  //         adresse_vd: dto.adresse_vd || '',
+  //         telephone_vd: dto.telephone_vd || '',
+  //         email_vd: dto.email_vd || '',
+  //         ville_vd: dto.ville_vd || '',
+  //         commentaire1: dto.commentaire1 || '',
+  //         commentaire2: dto.commentaire2 || '',
+  //         commentaire3: dto.commentaire3 || '',
+  //         commentaire4: dto.commentaire4 || '',
+  //         commentaire5: dto.commentaire5 || '',
+  //         commentaire6: dto.commentaire6 || '',
+  //         commentaire7: dto.commentaire7 || '',
+  //         commentaire8: dto.commentaire8 || '',
+  //         certifiee: 'NON',
+  //         counter_per_receipt_type: '',
+  //         total_receipt_counter: '',
+  //         receipt_type: '',
+  //         process_date_and_time: '',
+  //         device_dentification: '',
+  //         nif_: '',
+  //         signature: '',
+  //         ref_ini: '',
+  //         exoneration: '',
+  //         numero_seq,
+  //         numero_facture_certifiee,
+  //         imprimee: 1,
+  //         escompte: 0,
+  //       });
+
+  //       const savedCommande = await manager.save(CommandeVente, commande);
+  //       console.log(
+  //         `Commande sauvegardée avec id: ${savedCommande.id_commande_vente}`,
+  //       );
+
+  //       // Traitement des lignes - CALCULER D'ABORD LE MONTANT HT TOTAL
+  //       let montant_ht_total = 0; // Total HT (prix * quantité)
+  //       let montant_tva_total = 0; // Montant TVA calculé
+  //       const savedLignes: LignesCommandeVente[] = [];
+
+  //       for (const ligne of dto.lignes) {
+  //         const produit = await manager.findOneBy(Produit, {
+  //           id_produit: ligne.id_produit,
+  //         });
+  //         if (!produit) {
+  //           throw new BadRequestException(
+  //             `Produit avec id ${ligne.id_produit} non trouvé`,
+  //           );
+  //         }
+  //         if (ligne.quantite <= 0 || ligne.quantite > produit.stock_courant) {
+  //           throw new BadRequestException(
+  //             `Quantité invalide pour produit ${ligne.id_produit}: ${ligne.quantite}. Stock disponible: ${produit.stock_courant}`,
+  //           );
+  //         }
+
+  //         const prix_vente = ligne.prix_vente ?? produit.prix_unitaire;
+  //         const montant_ligne_ht = prix_vente * ligne.quantite; // Montant HT de la ligne
+
+  //         // Accumulation du montant HT total
+  //         montant_ht_total += montant_ligne_ht;
+
+  //         console.log(`Ligne ${ligne.id_produit}:`, {
+  //           prix_unitaire: prix_vente,
+  //           quantite: ligne.quantite,
+  //           montant_ht: montant_ligne_ht,
+  //         });
+
+  //         const ligneDto: CreateLignesCommandeVenteDto = {
+  //           id_produit: ligne.id_produit,
+  //           prix_vente,
+  //           remise: 0, // Pas de remise au niveau ligne
+  //           description_remise: 'Aucune',
+  //           prix_vente_avant_remise: prix_vente.toString(),
+  //           quantite: ligne.quantite,
+  //           group_tva: produit.group_tva ?? '',
+  //           etiquette_tva: produit.etiquette_tva ?? '',
+  //           taux_tva: tvaCommande,
+  //           isb_ligne: 0, // ISB géré au niveau commande
+  //           date: ligne.date ?? dto.date_commande_vente,
+  //         };
+
+  //         const savedLigne = await this.lignesCommandeVenteService.create(
+  //           ligneDto,
+  //           savedCommande.id_commande_vente,
+  //           dto.login,
+  //         );
+  //         savedLignes.push(savedLigne);
+  //       }
+
+  //       // MAINTENANT CALCULER LA REMISE (après avoir le montant HT total)
+  //       let montant_remise = 0;
+  //       const remiseFrontend =
+  //         dto.remise != null && !isNaN(dto.remise) && dto.remise >= 0
+  //           ? dto.remise
+  //           : 0;
+
+  //       if (remiseFrontend > 0) {
+  //         if (remiseFrontend < 1) {
+  //           // C'est un taux (ex: 0.02 = 2%)
+  //           montant_remise = montant_ht_total * remiseFrontend;
+  //           console.log(
+  //             `Remise calculée: ${montant_ht_total} × ${remiseFrontend} = ${montant_remise} CFA`,
+  //           );
+  //         } else {
+  //           // C'est un montant fixe
+  //           montant_remise = remiseFrontend;
+  //           console.log(`Remise fixe: ${montant_remise} CFA`);
+  //         }
+  //       }
+
+  //       console.log('Remise appliquée:', montant_remise, 'CFA');
+
+  //       // Calcul du montant HT après remise
+  //       const montant_ht_apres_remise = montant_ht_total - montant_remise;
+
+  //       // Calculer TVA sur le montant après remise
+  //       if (tvaCommande > 0) {
+  //         montant_tva_total = montant_ht_apres_remise * (tvaCommande / 100);
+  //       }
+
+  //       // Timbre fiscal
+  //       const timbre_fiscal = 200; // Fixe
+
+  //       // CORRECTION: Calcul ISB/Précompte sur (montant HT après remise + timbre fiscal)
+  //       const base_calcul_isb = montant_ht_apres_remise + timbre_fiscal;
+  //       const montant_isb = base_calcul_isb * isbRate;
+
+  //       // Calcul du total : (HT - Remise) + TVA + ISB + Timbre
+  //       const montant_total_final =
+  //         montant_ht_apres_remise +
+  //         montant_tva_total +
+  //         montant_isb +
+  //         timbre_fiscal;
+
+  //       console.log('Calculs finaux:', {
+  //         montant_ht_initial: montant_ht_total,
+  //         remise: montant_remise,
+  //         montant_ht_apres_remise: montant_ht_apres_remise,
+  //         timbre_fiscal: timbre_fiscal,
+  //         base_calcul_isb: base_calcul_isb,
+  //         taux_isb: isbRate,
+  //         montant_isb: montant_isb,
+  //         montant_tva: montant_tva_total,
+  //         total_final: montant_total_final,
+  //       });
+
+  //       // Mise à jour de la commande
+  //       await manager.update(
+  //         CommandeVente,
+  //         { id_commande_vente: savedCommande.id_commande_vente },
+  //         {
+  //           montant_total: montant_total_final,
+  //           montant_restant: montant_total_final,
+  //           tva: montant_tva_total, // Montant TVA calculé
+  //           isb: montant_isb, // Montant ISB calculé
+  //           remise: montant_remise, // Montant remise calculé
+  //         },
+  //       );
+
+  //       // Mise à jour objet retourné
+  //       savedCommande.montant_total = montant_total_final;
+  //       savedCommande.montant_restant = montant_total_final;
+  //       savedCommande.tva = montant_tva_total;
+  //       savedCommande.isb = montant_isb;
+  //       savedCommande.remise = montant_remise;
+  //       savedCommande.lignes = savedLignes;
+
+  //       return savedCommande;
+  //     } catch (error) {
+  //       console.error('Erreur dans la transaction:', error);
+  //       throw error;
+  //     }
+  //   });
+  // }
+
   async create(dto: CreateCommandeVenteDto): Promise<CommandeVente> {
     console.log('Payload reçu:', JSON.stringify(dto, null, 2));
 
@@ -1996,19 +2255,17 @@ export class CommandeVenteService {
         // Gérer l'ISB selon le type_isb
         let isbRate = 0;
         if (dto.type_isb) {
-          // Récupérer le taux ISB depuis la base
           const isbs = await manager.find(Isb, { select: ['isb', 'taux'] });
           const isbRecord = isbs.find((isb) => isb.isb === dto.type_isb);
           if (isbRecord) {
             isbRate = parseFloat(isbRecord.taux) || 0;
           } else {
-            // Mapping par défaut si pas trouvé en DB
             const isbMapping: { [key: string]: number } = {
               '0%': 0,
               '2%': 0.02,
               '5%': 0.05,
             };
-            isbRate = isbMapping[dto.type_isb] || 0.02; // 2% par défaut
+            isbRate = isbMapping[dto.type_isb] || 0.02;
           }
         }
         console.log('Taux ISB appliqué:', isbRate, 'pour type:', dto.type_isb);
@@ -2043,10 +2300,10 @@ export class CommandeVenteService {
         // Créer la commande (temporairement avec valeurs par défaut)
         const commande = manager.create(CommandeVente, {
           date_commande_vente: new Date(dto.date_commande_vente),
-          montant_total: 0, // Sera calculé
+          montant_total: 0,
           montant_paye: 0,
-          montant_restant: 0, // Sera calculé
-          remise: 0, // Sera calculé
+          montant_restant: 0,
+          remise: 0,
           validee: 1,
           statut: 0,
           id_client: dto.id_client,
@@ -2054,9 +2311,9 @@ export class CommandeVenteService {
           reglee: 0,
           moyen_reglement: 0,
           type_reglement: dto.type_reglement || 'E',
-          tva: 0, // Sera le montant TVA calculé
+          tva: 0,
           type_isb: dto.type_isb || '2%',
-          isb: 0, // Sera calculé
+          isb: 0,
           avoir: 0,
           login: dto.login,
           type_facture: 'FV',
@@ -2098,8 +2355,8 @@ export class CommandeVenteService {
         );
 
         // Traitement des lignes - CALCULER D'ABORD LE MONTANT HT TOTAL
-        let montant_ht_total = 0; // Total HT (prix * quantité)
-        let montant_tva_total = 0; // Montant TVA calculé
+        let montant_ht_total = 0;
+        let montant_tva_total = 0;
         const savedLignes: LignesCommandeVente[] = [];
 
         for (const ligne of dto.lignes) {
@@ -2118,9 +2375,8 @@ export class CommandeVenteService {
           }
 
           const prix_vente = ligne.prix_vente ?? produit.prix_unitaire;
-          const montant_ligne_ht = prix_vente * ligne.quantite; // Montant HT de la ligne
+          const montant_ligne_ht = Math.round(prix_vente * ligne.quantite); // Arrondi à l'entier
 
-          // Accumulation du montant HT total
           montant_ht_total += montant_ligne_ht;
 
           console.log(`Ligne ${ligne.id_produit}:`, {
@@ -2132,14 +2388,14 @@ export class CommandeVenteService {
           const ligneDto: CreateLignesCommandeVenteDto = {
             id_produit: ligne.id_produit,
             prix_vente,
-            remise: 0, // Pas de remise au niveau ligne
+            remise: 0,
             description_remise: 'Aucune',
             prix_vente_avant_remise: prix_vente.toString(),
             quantite: ligne.quantite,
             group_tva: produit.group_tva ?? '',
             etiquette_tva: produit.etiquette_tva ?? '',
             taux_tva: tvaCommande,
-            isb_ligne: 0, // ISB géré au niveau commande
+            isb_ligne: 0,
             date: ligne.date ?? dto.date_commande_vente,
           };
 
@@ -2151,7 +2407,7 @@ export class CommandeVenteService {
           savedLignes.push(savedLigne);
         }
 
-        // MAINTENANT CALCULER LA REMISE (après avoir le montant HT total)
+        // Calculer la remise
         let montant_remise = 0;
         const remiseFrontend =
           dto.remise != null && !isNaN(dto.remise) && dto.remise >= 0
@@ -2160,41 +2416,42 @@ export class CommandeVenteService {
 
         if (remiseFrontend > 0) {
           if (remiseFrontend < 1) {
-            // C'est un taux (ex: 0.02 = 2%)
-            montant_remise = montant_ht_total * remiseFrontend;
+            montant_remise = Math.round(montant_ht_total * remiseFrontend); // Arrondi à l'entier
             console.log(
               `Remise calculée: ${montant_ht_total} × ${remiseFrontend} = ${montant_remise} CFA`,
             );
           } else {
-            // C'est un montant fixe
-            montant_remise = remiseFrontend;
+            montant_remise = Math.round(remiseFrontend); // Arrondi à l'entier
             console.log(`Remise fixe: ${montant_remise} CFA`);
           }
         }
 
-        console.log('Remise appliquée:', montant_remise, 'CFA');
-
         // Calcul du montant HT après remise
-        const montant_ht_apres_remise = montant_ht_total - montant_remise;
+        const montant_ht_apres_remise = Math.round(
+          montant_ht_total - montant_remise,
+        ); // Arrondi à l'entier
 
         // Calculer TVA sur le montant après remise
         if (tvaCommande > 0) {
-          montant_tva_total = montant_ht_apres_remise * (tvaCommande / 100);
+          montant_tva_total = Math.round(
+            montant_ht_apres_remise * (tvaCommande / 100),
+          ); // Arrondi à l'entier
         }
 
         // Timbre fiscal
-        const timbre_fiscal = 200; // Fixe
+        const timbre_fiscal = 200;
 
-        // CORRECTION: Calcul ISB/Précompte sur (montant HT après remise + timbre fiscal)
+        // Calcul ISB/Précompte sur (montant HT après remise + timbre fiscal)
         const base_calcul_isb = montant_ht_apres_remise + timbre_fiscal;
-        const montant_isb = base_calcul_isb * isbRate;
+        const montant_isb = Math.round(base_calcul_isb * isbRate); // Arrondi à l'entier
 
         // Calcul du total : (HT - Remise) + TVA + ISB + Timbre
-        const montant_total_final =
+        const montant_total_final = Math.round(
           montant_ht_apres_remise +
-          montant_tva_total +
-          montant_isb +
-          timbre_fiscal;
+            montant_tva_total +
+            montant_isb +
+            timbre_fiscal,
+        ); // Arrondi à l'entier
 
         console.log('Calculs finaux:', {
           montant_ht_initial: montant_ht_total,
@@ -2215,9 +2472,9 @@ export class CommandeVenteService {
           {
             montant_total: montant_total_final,
             montant_restant: montant_total_final,
-            tva: montant_tva_total, // Montant TVA calculé
-            isb: montant_isb, // Montant ISB calculé
-            remise: montant_remise, // Montant remise calculé
+            tva: montant_tva_total,
+            isb: montant_isb,
+            remise: montant_remise,
           },
         );
 
@@ -3394,26 +3651,69 @@ export class CommandeVenteService {
     }));
   }
 
+  // async getUnpaidInvoices(dto: GetUnpaidInvoicesDto) {
+  //   const { id_client, date_debut, date_fin } = dto;
+
+  //   const query = this.commandeVenteRepository
+  //     .createQueryBuilder('commande')
+  //     .where('commande.reglee = :reglee', { reglee: 0 }); // Factures non réglées
+
+  //   // Ajouter le filtre par id_client si fourni
+  //   if (id_client) {
+  //     query.andWhere('commande.id_client = :id_client', { id_client });
+  //   }
+
+  //   // Ajouter le filtre par dates si fourni
+  //   if (date_debut && date_fin) {
+  //     query.andWhere(
+  //       'commande.date_commande_vente BETWEEN :date_debut AND :date_fin',
+  //       {
+  //         date_debut,
+  //         date_fin,
+  //       },
+  //     );
+  //   } else if (date_debut) {
+  //     query.andWhere('commande.date_commande_vente >= :date_debut', {
+  //       date_debut,
+  //     });
+  //   } else if (date_fin) {
+  //     query.andWhere('commande.date_commande_vente <= :date_fin', { date_fin });
+  //   }
+
+  //   // Récupérer les factures avec les relations nécessaires
+  //   const invoices = await query
+  //     .leftJoinAndSelect('commande.client', 'client')
+  //     .select([
+  //       'commande.id_commande_vente',
+  //       'commande.numero_facture_certifiee',
+  //       'commande.date_commande_vente',
+  //       'commande.montant_total',
+  //       'commande.montant_paye',
+  //       'commande.montant_restant',
+  //       'client.nom',
+  //       'client.prenom',
+  //     ])
+  //     .orderBy('commande.date_commande_vente', 'DESC')
+  //     .getMany();
+
+  //   return invoices;
+  // }
+
   async getUnpaidInvoices(dto: GetUnpaidInvoicesDto) {
     const { id_client, date_debut, date_fin } = dto;
 
     const query = this.commandeVenteRepository
       .createQueryBuilder('commande')
-      .where('commande.reglee = :reglee', { reglee: 0 }); // Factures non réglées
+      .where('commande.reglee = :reglee', { reglee: 0 });
 
-    // Ajouter le filtre par id_client si fourni
     if (id_client) {
       query.andWhere('commande.id_client = :id_client', { id_client });
     }
 
-    // Ajouter le filtre par dates si fourni
     if (date_debut && date_fin) {
       query.andWhere(
         'commande.date_commande_vente BETWEEN :date_debut AND :date_fin',
-        {
-          date_debut,
-          date_fin,
-        },
+        { date_debut, date_fin },
       );
     } else if (date_debut) {
       query.andWhere('commande.date_commande_vente >= :date_debut', {
@@ -3423,7 +3723,6 @@ export class CommandeVenteService {
       query.andWhere('commande.date_commande_vente <= :date_fin', { date_fin });
     }
 
-    // Récupérer les factures avec les relations nécessaires
     const invoices = await query
       .leftJoinAndSelect('commande.client', 'client')
       .select([
@@ -3439,9 +3738,28 @@ export class CommandeVenteService {
       .orderBy('commande.date_commande_vente', 'DESC')
       .getMany();
 
-    return invoices;
-  }
+    // const TIMBRE_FISCAL = 200; // CFA
 
+    return invoices.map((invoice) => {
+      // Montant TTC = Montant en BD + Timbre Fiscal (arrondi)
+      // const montantTTC = Math.round(invoice.montant_total + TIMBRE_FISCAL);
+      const montantTTC = Math.round(invoice.montant_total);
+      const montantRestant = Math.round(montantTTC - invoice.montant_paye);
+
+      return {
+        id_commande_vente: invoice.id_commande_vente,
+        numero_facture_certifiee: invoice.numero_facture_certifiee,
+        date_commande_vente: invoice.date_commande_vente,
+        montant_total: montantTTC,
+        montant_paye: Math.round(invoice.montant_paye),
+        montant_restant: montantRestant,
+        client: {
+          nom: invoice.client?.nom,
+          prenom: invoice.client?.prenom,
+        },
+      };
+    });
+  }
   async exportUnpaidInvoicesToExcel(
     dto: GetUnpaidInvoicesDto,
     res: Response,
