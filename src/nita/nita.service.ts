@@ -30,6 +30,7 @@ export class NitaService {
     return this.nitaRepository.update(id, updateNitaDto);
   }
 
+  //
   remove(id: number) {
     return this.nitaRepository.delete(id);
   }
