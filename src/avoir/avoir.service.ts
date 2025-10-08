@@ -188,8 +188,6 @@ export class AvoirService {
   }
 
   async createAvoir(dto: CreateAvoirDto): Promise<Avoir> {
-    // console.log('Payload reçu pour avoir:', JSON.stringify(dto, null, 2));
-
     // Validation des champs
     if (
       !dto.login ||
@@ -227,46 +225,6 @@ export class AvoirService {
           );
         }
 
-        // Valider type_isb
-        const isbs = await manager.find(Isb, { select: ['isb'] });
-        const validIsb = isbs.map((isb) => isb.isb.trim().toUpperCase());
-        const isbMapping: { [key: string]: string } = {
-          A: '0%',
-          C: '2%',
-          D: '5%',
-        };
-        const mappedTypeIsb =
-          isbMapping[dto.type_isb?.toUpperCase()] ||
-          dto.type_isb?.toUpperCase();
-        // if (!dto.type_isb || !validIsb.includes(mappedTypeIsb)) {
-        //   throw new BadRequestException(
-        //     `Type ISB invalide: ${dto.type_isb}. Valeurs valides: ${validIsb.join(', ')}`,
-        //   );
-        // }
-        const isbRecord = await manager.findOne(Isb, {
-          where: { isb: mappedTypeIsb },
-        });
-        const isbRate: any = isbRecord?.taux || 0;
-
-        // Valider type_reglement
-        const typeReglements = await manager.find(TypeReglement);
-        const validTypeReglements = typeReglements.map((tr) =>
-          tr.type_reglement.trim().toUpperCase(),
-        );
-        const receivedTypeReglement = dto.type_reglement?.toUpperCase() || 'E';
-        // if (!validTypeReglements.includes(receivedTypeReglement)) {
-        //   throw new BadRequestException(
-        //     `Type de règlement invalide: ${dto.type_reglement}. Valeurs valides: ${validTypeReglements.join(', ')}`,
-        //   );
-        // }
-
-        // Valider la remise globale
-        if (dto.remise == null || isNaN(dto.remise) || dto.remise < 0) {
-          throw new BadRequestException(
-            `Remise invalide: ${dto.remise}. Doit être un nombre positif en CFA`,
-          );
-        }
-
         // Générer numero_seq et numero_facture_certifiee
         const currentYear = new Date().getFullYear();
         const lastAvoir = await manager.findOne(Avoir, {
@@ -286,21 +244,21 @@ export class AvoirService {
           );
         }
 
-        // Créer l'avoir
+        // Créer l'avoir - copie les paramètres de la facture originale
         const avoir = manager.create(Avoir, {
           date_avoir: new Date(dto.date_avoir || new Date()),
           montant_total: 0,
           montant_restant: 0,
-          remise: dto.remise || 0,
+          remise: 0,
           validee: 1,
           statut: 0,
           id_client: dto.id_client,
           client,
           reglee: 0,
           moyen_reglement: 0,
-          type_reglement: receivedTypeReglement,
+          type_reglement: factureVente.type_reglement,
           tva: 0,
-          type_isb: dto.type_isb,
+          type_isb: factureVente.type_isb,
           isb: 0,
           login: dto.login,
           ref_ini: factureVente.numero_facture_certifiee,
@@ -323,7 +281,7 @@ export class AvoirService {
 
         const savedAvoir = await manager.save(Avoir, avoir);
 
-        // Calculer les lignes de l'avoir et mettre à jour les lignes de la facture initiale
+        // Traiter les lignes de l'avoir
         let subtotal = 0;
         let montant_tva = 0;
         let isb_total = 0;
@@ -339,7 +297,8 @@ export class AvoirService {
               `Produit ${ligne.id_produit} non présent dans la facture initiale`,
             );
           }
-          // Vérifier que la quantité demandée dans l'avoir ne dépasse pas la quantité initiale
+
+          // Vérifier que la quantité demandée ne dépasse pas la quantité initiale
           if (ligne.quantite > ligneOriginale.quantite) {
             throw new BadRequestException(
               `Quantité ${ligne.quantite} pour produit ${ligne.id_produit} dépasse la quantité initiale ${ligneOriginale.quantite}`,
@@ -356,31 +315,20 @@ export class AvoirService {
             );
           }
 
-          // Utiliser la remise de la facture initiale si aucune remise spécifique n'est fournie
+          // Utiliser EXACTEMENT les paramètres de la ligne originale
           const prix_vente = ligneOriginale.prix_vente;
-          const remise = ligne.remise ?? ligneOriginale.remise;
-          if (remise < 0 || remise > 1) {
-            throw new BadRequestException(
-              `Remise pour produit ${ligne.id_produit} invalide: ${remise}. Doit être entre 0 et 1`,
-            );
-          }
+          const remise = ligneOriginale.remise;
+          const taux_tva = ligneOriginale.taux_tva;
 
           // Calculer le montant de la ligne d'avoir
           const montant_ligne = prix_vente * ligne.quantite * (1 - remise);
-          const taux_tva = ligneOriginale.taux_tva;
           const montant_tva_ligne = montant_ligne * (taux_tva / 100);
-          const isb_ligne = ligne.isb_ligne ?? montant_ligne * isbRate;
 
-          // Vérifier que le montant de la ligne ne dépasse pas le montant initial
-          const montant_ligne_initial =
-            ligneOriginale.prix_vente *
-            ligneOriginale.quantite *
-            (1 - ligneOriginale.remise);
-          if (montant_ligne > montant_ligne_initial) {
-            throw new BadRequestException(
-              `Le montant de la ligne pour le produit ${ligne.id_produit} (${montant_ligne}) dépasses le montant initial (${montant_ligne_initial})`,
-            );
-          }
+          // Calculer l'ISB proportionnellement
+          const ratio_quantite = ligne.quantite / ligneOriginale.quantite;
+          const isb_ligne = ligneOriginale.isb_ligne
+            ? ligneOriginale.isb_ligne * ratio_quantite
+            : 0;
 
           // Cumuler les montants pour l'avoir
           subtotal += montant_ligne;
@@ -395,7 +343,7 @@ export class AvoirService {
             produit,
             prix_vente,
             remise,
-            description_remise: ligne.description_remise || 'Avoir',
+            description_remise: ligneOriginale.description_remise || 'Avoir',
             prix_vente_avant_remise: prix_vente.toString(),
             quantite: ligne.quantite,
             montant: montant_ligne,
@@ -413,11 +361,15 @@ export class AvoirService {
           const savedLigne = await manager.save(LigneAvoir, ligneAvoir);
           savedLignes.push(savedLigne);
 
-          // Mettre à jour la ligne correspondante dans la facture initiale
+          // Mettre à jour la ligne de la facture initiale (réduire la quantité)
           const nouvelleQuantite = ligneOriginale.quantite - ligne.quantite;
           const nouveauMontantLigne =
             prix_vente * nouvelleQuantite * (1 - remise);
           const nouveauMontantTvaLigne = nouveauMontantLigne * (taux_tva / 100);
+          const nouveauIsbLigne = ligneOriginale.isb_ligne
+            ? ligneOriginale.isb_ligne *
+              (nouvelleQuantite / ligneOriginale.quantite)
+            : 0;
 
           await manager.update(
             LignesCommandeVente,
@@ -426,6 +378,7 @@ export class AvoirService {
               quantite: nouvelleQuantite,
               montant: nouveauMontantLigne,
               montant_tva: nouveauMontantTvaLigne,
+              isb_ligne: nouveauIsbLigne,
             },
           );
 
@@ -464,47 +417,45 @@ export class AvoirService {
           );
         }
 
-        // Calculer le montant total de l'avoir
+        // Calculer le montant total de l'avoir (sans remise globale)
         const montant_total_avoir = subtotal + montant_tva + isb_total;
-        const remise_globale = dto.remise || 0;
-
-        // Vérifier que la remise globale est valide
-        if (remise_globale > montant_total_avoir) {
-          throw new BadRequestException(
-            `La remise globale (${remise_globale}) dépasse le montant total de l'avoir (${montant_total_avoir})`,
-          );
-        }
-
-        const montant_final_avoir = montant_total_avoir - remise_globale;
-
-        // Vérifier que l'avoir ne dépasse pas le montant total initial de la facture
-        if (montant_final_avoir > factureVente.montant_total) {
-          throw new BadRequestException(
-            `Le montant de l'avoir (${montant_final_avoir}) dépasse le montant total initial de la facture (${factureVente.montant_total})`,
-          );
-        }
 
         // Mettre à jour l'avoir avec les montants calculés
         await manager.update(
           Avoir,
           { id_avoir: savedAvoir.id_avoir },
           {
-            montant_total: montant_final_avoir,
-            montant_restant: montant_final_avoir,
+            montant_total: montant_total_avoir,
+            montant_restant: montant_total_avoir,
             tva: montant_tva,
             isb: isb_total,
           },
         );
 
-        // Recalculer le montant total de la facture initiale après modification des lignes
+        // Recalculer le nouveau total de la facture en additionnant les lignes restantes
         const lignesFacture = await manager.find(LignesCommandeVente, {
           where: { id_commande_vente: factureVente.id_commande_vente },
-          select: ['montant', 'montant_tva'],
+          select: ['montant', 'montant_tva', 'isb_ligne'],
         });
-        const nouveauMontantTotalFacture = lignesFacture.reduce(
-          (sum, ligne) => sum + ligne.montant + ligne.montant_tva,
+
+        const nouveauMontantHtFacture = lignesFacture.reduce(
+          (sum, ligne) => sum + ligne.montant,
           0,
         );
+        const nouveauMontantTvaFacture = lignesFacture.reduce(
+          (sum, ligne) => sum + ligne.montant_tva,
+          0,
+        );
+        const nouveauMontantIsbFacture = lignesFacture.reduce(
+          (sum, ligne) => sum + (ligne.isb_ligne || 0),
+          0,
+        );
+
+        // Le montant total = HT + TVA + ISB (pas de recalcul de remise ou timbre)
+        const nouveauMontantTotalFacture =
+          nouveauMontantHtFacture +
+          nouveauMontantTvaFacture +
+          nouveauMontantIsbFacture;
 
         // Calculer le montant déjà payé et le nouveau montant restant
         const montantDejaPaye =
@@ -519,7 +470,7 @@ export class AvoirService {
           nouveauMontantRestant = 0;
         }
 
-        // Mettre à jour la facture initiale avec les nouveaux montants
+        // Mettre à jour UNIQUEMENT le montant total et montant restant de la facture
         await manager.update(
           CommandeVente,
           { id_commande_vente: factureVente.id_commande_vente },
@@ -550,7 +501,7 @@ export class AvoirService {
 
         // Enregistrer le log de l'opération
         const logEntry = manager.create(Log, {
-          log: `Enregistrement de la facture d'avoir N° ${savedAvoir.id_avoir} pour facture ${factureVente.numero_facture_certifiee} (montant: ${montant_final_avoir}, nouveau montant facture: ${nouveauMontantTotalFacture}, surplus crédité: ${surplus})`,
+          log: `Enregistrement de la facture d'avoir N° ${savedAvoir.id_avoir} pour facture ${factureVente.numero_facture_certifiee} (montant: ${montant_total_avoir}, nouveau montant facture: ${nouveauMontantTotalFacture}, surplus crédité: ${surplus})`,
           date: new Date(),
           user: dto.login.trim(),
           archive: 1,
@@ -573,6 +524,392 @@ export class AvoirService {
       }
     });
   }
+  // async createAvoir(dto: CreateAvoirDto): Promise<Avoir> {
+  //   // console.log('Payload reçu pour avoir:', JSON.stringify(dto, null, 2));
+
+  //   // Validation des champs
+  //   if (
+  //     !dto.login ||
+  //     typeof dto.login !== 'string' ||
+  //     dto.login.trim() === ''
+  //   ) {
+  //     throw new BadRequestException(
+  //       'Le champ login est requis et doit être une chaîne non vide',
+  //     );
+  //   }
+
+  //   return this.avoirRepository.manager.transaction(async (manager) => {
+  //     try {
+  //       // Valider la facture de vente initiale
+  //       const factureVente = await manager.findOne(CommandeVente, {
+  //         where: {
+  //           id_commande_vente: dto.id_facture_vente,
+  //           type_facture: 'FV',
+  //         },
+  //         relations: ['client', 'lignes', 'lignes.produit'],
+  //       });
+  //       if (!factureVente) {
+  //         throw new BadRequestException(
+  //           `Facture de vente avec id ${dto.id_facture_vente} non trouvée`,
+  //         );
+  //       }
+
+  //       // Valider le client
+  //       const client = await manager.findOneBy(Client, {
+  //         id_client: dto.id_client,
+  //       });
+  //       if (!client || client.id_client !== factureVente.id_client) {
+  //         throw new BadRequestException(
+  //           `Client ${dto.id_client} non valide ou ne correspond pas à la facture`,
+  //         );
+  //       }
+
+  //       // Valider type_isb
+  //       const isbs = await manager.find(Isb, { select: ['isb'] });
+  //       const validIsb = isbs.map((isb) => isb.isb.trim().toUpperCase());
+  //       const isbMapping: { [key: string]: string } = {
+  //         A: '0%',
+  //         C: '2%',
+  //         D: '5%',
+  //       };
+  //       const mappedTypeIsb =
+  //         isbMapping[dto.type_isb?.toUpperCase()] ||
+  //         dto.type_isb?.toUpperCase();
+  //       // if (!dto.type_isb || !validIsb.includes(mappedTypeIsb)) {
+  //       //   throw new BadRequestException(
+  //       //     `Type ISB invalide: ${dto.type_isb}. Valeurs valides: ${validIsb.join(', ')}`,
+  //       //   );
+  //       // }
+  //       const isbRecord = await manager.findOne(Isb, {
+  //         where: { isb: mappedTypeIsb },
+  //       });
+  //       const isbRate: any = isbRecord?.taux || 0;
+
+  //       // Valider type_reglement
+  //       const typeReglements = await manager.find(TypeReglement);
+  //       const validTypeReglements = typeReglements.map((tr) =>
+  //         tr.type_reglement.trim().toUpperCase(),
+  //       );
+  //       const receivedTypeReglement = dto.type_reglement?.toUpperCase() || 'E';
+  //       // if (!validTypeReglements.includes(receivedTypeReglement)) {
+  //       //   throw new BadRequestException(
+  //       //     `Type de règlement invalide: ${dto.type_reglement}. Valeurs valides: ${validTypeReglements.join(', ')}`,
+  //       //   );
+  //       // }
+
+  //       // Valider la remise globale
+  //       if (dto.remise == null || isNaN(dto.remise) || dto.remise < 0) {
+  //         throw new BadRequestException(
+  //           `Remise invalide: ${dto.remise}. Doit être un nombre positif en CFA`,
+  //         );
+  //       }
+
+  //       // Générer numero_seq et numero_facture_certifiee
+  //       const currentYear = new Date().getFullYear();
+  //       const lastAvoir = await manager.findOne(Avoir, {
+  //         where: { numero_facture_certifiee: Like(`%-${currentYear}`) },
+  //         order: { numero_seq: 'DESC' },
+  //       });
+  //       const numero_seq = lastAvoir ? lastAvoir.numero_seq + 1 : 1;
+  //       const numero_facture_certifiee = `${numero_seq.toString().padStart(4, '0')}-${currentYear}`;
+
+  //       // Vérifier l'unicité
+  //       const existingAvoir = await manager.findOne(Avoir, {
+  //         where: { numero_facture_certifiee },
+  //       });
+  //       if (existingAvoir) {
+  //         throw new BadRequestException(
+  //           `Une facture d'avoir existe déjà avec le numéro ${numero_facture_certifiee}`,
+  //         );
+  //       }
+
+  //       // Créer l'avoir
+  //       const avoir = manager.create(Avoir, {
+  //         date_avoir: new Date(dto.date_avoir || new Date()),
+  //         montant_total: 0,
+  //         montant_restant: 0,
+  //         remise: dto.remise || 0,
+  //         validee: 1,
+  //         statut: 0,
+  //         id_client: dto.id_client,
+  //         client,
+  //         reglee: 0,
+  //         moyen_reglement: 0,
+  //         type_reglement: receivedTypeReglement,
+  //         tva: 0,
+  //         type_isb: dto.type_isb,
+  //         isb: 0,
+  //         login: dto.login,
+  //         ref_ini: factureVente.numero_facture_certifiee,
+  //         facture_vente: factureVente,
+  //         numero_seq,
+  //         numero_facture_certifiee,
+  //         imprimee: 1,
+  //         certifiee: 'NON',
+  //         commentaire1:
+  //           dto.commentaire1 ||
+  //           `Avoir pour facture ${factureVente.id_commande_vente}`,
+  //         commentaire2: dto.commentaire2 || '',
+  //         commentaire3: dto.commentaire3 || '',
+  //         commentaire4: dto.commentaire4 || '',
+  //         commentaire5: dto.commentaire5 || '',
+  //         commentaire6: dto.commentaire6 || '',
+  //         commentaire7: dto.commentaire7 || '',
+  //         commentaire8: dto.commentaire8 || '',
+  //       });
+
+  //       const savedAvoir = await manager.save(Avoir, avoir);
+
+  //       // Calculer les lignes de l'avoir et mettre à jour les lignes de la facture initiale
+  //       let subtotal = 0;
+  //       let montant_tva = 0;
+  //       let isb_total = 0;
+  //       const savedLignes: LigneAvoir[] = [];
+
+  //       for (const ligne of dto.lignes) {
+  //         // Vérifier que le produit existe dans la facture initiale
+  //         const ligneOriginale = factureVente.lignes.find(
+  //           (l) => l.designation === ligne.id_produit,
+  //         );
+  //         if (!ligneOriginale) {
+  //           throw new BadRequestException(
+  //             `Produit ${ligne.id_produit} non présent dans la facture initiale`,
+  //           );
+  //         }
+  //         // Vérifier que la quantité demandée dans l'avoir ne dépasse pas la quantité initiale
+  //         if (ligne.quantite > ligneOriginale.quantite) {
+  //           throw new BadRequestException(
+  //             `Quantité ${ligne.quantite} pour produit ${ligne.id_produit} dépasse la quantité initiale ${ligneOriginale.quantite}`,
+  //           );
+  //         }
+
+  //         // Vérifier que le produit existe
+  //         const produit = await manager.findOneBy(Produit, {
+  //           id_produit: ligne.id_produit,
+  //         });
+  //         if (!produit) {
+  //           throw new BadRequestException(
+  //             `Produit avec id ${ligne.id_produit} non trouvé`,
+  //           );
+  //         }
+
+  //         // Utiliser la remise de la facture initiale si aucune remise spécifique n'est fournie
+  //         const prix_vente = ligneOriginale.prix_vente;
+  //         const remise = ligne.remise ?? ligneOriginale.remise;
+  //         if (remise < 0 || remise > 1) {
+  //           throw new BadRequestException(
+  //             `Remise pour produit ${ligne.id_produit} invalide: ${remise}. Doit être entre 0 et 1`,
+  //           );
+  //         }
+
+  //         // Calculer le montant de la ligne d'avoir
+  //         const montant_ligne = prix_vente * ligne.quantite * (1 - remise);
+  //         const taux_tva = ligneOriginale.taux_tva;
+  //         const montant_tva_ligne = montant_ligne * (taux_tva / 100);
+  //         const isb_ligne = ligne.isb_ligne ?? montant_ligne * isbRate;
+
+  //         // Vérifier que le montant de la ligne ne dépasse pas le montant initial
+  //         const montant_ligne_initial =
+  //           ligneOriginale.prix_vente *
+  //           ligneOriginale.quantite *
+  //           (1 - ligneOriginale.remise);
+  //         if (montant_ligne > montant_ligne_initial) {
+  //           throw new BadRequestException(
+  //             `Le montant de la ligne pour le produit ${ligne.id_produit} (${montant_ligne}) dépasses le montant initial (${montant_ligne_initial})`,
+  //           );
+  //         }
+
+  //         // Cumuler les montants pour l'avoir
+  //         subtotal += montant_ligne;
+  //         montant_tva += montant_tva_ligne;
+  //         isb_total += isb_ligne;
+
+  //         // Créer la ligne d'avoir
+  //         const ligneAvoir = manager.create(LigneAvoir, {
+  //           id_avoir: savedAvoir.id_avoir,
+  //           avoir: savedAvoir,
+  //           designation: ligne.id_produit,
+  //           produit,
+  //           prix_vente,
+  //           remise,
+  //           description_remise: ligne.description_remise || 'Avoir',
+  //           prix_vente_avant_remise: prix_vente.toString(),
+  //           quantite: ligne.quantite,
+  //           montant: montant_ligne,
+  //           group_tva: ligneOriginale.group_tva,
+  //           etiquette_tva: ligneOriginale.etiquette_tva,
+  //           taux_tva,
+  //           montant_tva: montant_tva_ligne,
+  //           isb_ligne,
+  //           date: dto.date_avoir || new Date().toISOString().split('T')[0],
+  //           stock_avant: produit.stock_courant,
+  //           stock_apres: produit.stock_courant + ligne.quantite,
+  //           retour: 0,
+  //         });
+
+  //         const savedLigne = await manager.save(LigneAvoir, ligneAvoir);
+  //         savedLignes.push(savedLigne);
+
+  //         // Mettre à jour la ligne correspondante dans la facture initiale
+  //         const nouvelleQuantite = ligneOriginale.quantite - ligne.quantite;
+  //         const nouveauMontantLigne =
+  //           prix_vente * nouvelleQuantite * (1 - remise);
+  //         const nouveauMontantTvaLigne = nouveauMontantLigne * (taux_tva / 100);
+
+  //         await manager.update(
+  //           LignesCommandeVente,
+  //           { id_ligne_commande_vente: ligneOriginale.id_ligne_commande_vente },
+  //           {
+  //             quantite: nouvelleQuantite,
+  //             montant: nouveauMontantLigne,
+  //             montant_tva: nouveauMontantTvaLigne,
+  //           },
+  //         );
+
+  //         // Restaurer le stock
+  //         await manager.update(
+  //           Produit,
+  //           { id_produit: ligne.id_produit },
+  //           { stock_courant: produit.stock_courant + ligne.quantite },
+  //         );
+
+  //         // Enregistrer le mouvement de stock
+  //         const mvtStock = manager.create(MMvtStock, {
+  //           id_produit: ligne.id_produit,
+  //           quantite: ligne.quantite,
+  //           quantite_commandee: 0,
+  //           cout: produit.prix_unitaire || 0,
+  //           date: new Date(),
+  //           user: dto.login.trim(),
+  //           type: 1,
+  //           magasin: 1,
+  //           commentaire: `Retour via avoir ${savedAvoir.id_avoir}`,
+  //           stock_avant: produit.stock_courant,
+  //           stock_apres: produit.stock_courant + ligne.quantite,
+  //           id_commande_vente: factureVente.id_commande_vente,
+  //           annule: 'N',
+  //           num_lot: '',
+  //           date_expiration: null,
+  //           conformite: 'O',
+  //         });
+  //         await manager.save(MMvtStock, mvtStock);
+
+  //         // Mettre à jour le stock capturé
+  //         await this.captureStockService.updateStockCapture(
+  //           ligne.id_produit,
+  //           produit.stock_courant + ligne.quantite,
+  //         );
+  //       }
+
+  //       // Calculer le montant total de l'avoir
+  //       const montant_total_avoir = subtotal + montant_tva + isb_total;
+  //       const remise_globale = dto.remise || 0;
+
+  //       // Vérifier que la remise globale est valide
+  //       if (remise_globale > montant_total_avoir) {
+  //         throw new BadRequestException(
+  //           `La remise globale (${remise_globale}) dépasse le montant total de l'avoir (${montant_total_avoir})`,
+  //         );
+  //       }
+
+  //       const montant_final_avoir = montant_total_avoir - remise_globale;
+
+  //       // Vérifier que l'avoir ne dépasse pas le montant total initial de la facture
+  //       if (montant_final_avoir > factureVente.montant_total) {
+  //         throw new BadRequestException(
+  //           `Le montant de l'avoir (${montant_final_avoir}) dépasse le montant total initial de la facture (${factureVente.montant_total})`,
+  //         );
+  //       }
+
+  //       // Mettre à jour l'avoir avec les montants calculés
+  //       await manager.update(
+  //         Avoir,
+  //         { id_avoir: savedAvoir.id_avoir },
+  //         {
+  //           montant_total: montant_final_avoir,
+  //           montant_restant: montant_final_avoir,
+  //           tva: montant_tva,
+  //           isb: isb_total,
+  //         },
+  //       );
+
+  //       // Recalculer le montant total de la facture initiale après modification des lignes
+  //       const lignesFacture = await manager.find(LignesCommandeVente, {
+  //         where: { id_commande_vente: factureVente.id_commande_vente },
+  //         select: ['montant', 'montant_tva'],
+  //       });
+  //       const nouveauMontantTotalFacture = lignesFacture.reduce(
+  //         (sum, ligne) => sum + ligne.montant + ligne.montant_tva,
+  //         0,
+  //       );
+
+  //       // Calculer le montant déjà payé et le nouveau montant restant
+  //       const montantDejaPaye =
+  //         factureVente.montant_total - factureVente.montant_restant;
+  //       let nouveauMontantRestant =
+  //         nouveauMontantTotalFacture - montantDejaPaye;
+
+  //       // Gérer le cas où le client a payé plus que le nouveau montant total
+  //       let surplus = 0;
+  //       if (nouveauMontantRestant < 0) {
+  //         surplus = Math.abs(nouveauMontantRestant);
+  //         nouveauMontantRestant = 0;
+  //       }
+
+  //       // Mettre à jour la facture initiale avec les nouveaux montants
+  //       await manager.update(
+  //         CommandeVente,
+  //         { id_commande_vente: factureVente.id_commande_vente },
+  //         {
+  //           montant_total: nouveauMontantTotalFacture,
+  //           montant_restant: nouveauMontantRestant,
+  //           avoir: 1,
+  //         },
+  //       );
+
+  //       // Si surplus, créditer l'avance du client
+  //       if (surplus > 0) {
+  //         const client = await manager.findOneBy(Client, {
+  //           id_client: factureVente.id_client,
+  //         });
+  //         if (client) {
+  //           const nouveauSolde = (client.avance || 0) + surplus;
+  //           await manager.update(
+  //             Client,
+  //             { id_client: factureVente.id_client },
+  //             { avance: nouveauSolde },
+  //           );
+  //           console.log(
+  //             `Solde du client ${client.nom} mis à jour : avance = ${nouveauSolde}`,
+  //           );
+  //         }
+  //       }
+
+  //       // Enregistrer le log de l'opération
+  //       const logEntry = manager.create(Log, {
+  //         log: `Enregistrement de la facture d'avoir N° ${savedAvoir.id_avoir} pour facture ${factureVente.numero_facture_certifiee} (montant: ${montant_final_avoir}, nouveau montant facture: ${nouveauMontantTotalFacture}, surplus crédité: ${surplus})`,
+  //         date: new Date(),
+  //         user: dto.login.trim(),
+  //         archive: 1,
+  //       });
+  //       await manager.save(Log, logEntry);
+
+  //       // Recharger l'avoir avec toutes les relations pour le retour
+  //       const finalAvoir = await manager.findOne(Avoir, {
+  //         where: { id_avoir: savedAvoir.id_avoir },
+  //         relations: ['client', 'facture_vente', 'lignes', 'lignes.produit'],
+  //       });
+
+  //       return finalAvoir;
+  //     } catch (error) {
+  //       console.error(
+  //         'Erreur dans la transaction:',
+  //         JSON.stringify(error, null, 2),
+  //       );
+  //       throw error;
+  //     }
+  //   });
+  // }
 
   async getAvoirs(dto: GetAvoirsDto): Promise<Avoir[]> {
     console.log('getAvoirs called with:', dto);
