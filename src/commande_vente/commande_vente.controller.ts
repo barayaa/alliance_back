@@ -324,17 +324,36 @@ export class CommandeVenteController {
   }
 
   // Route existante pour l'export Excel (non modifiée)@Get('global-sales-summary/export-excel')
+  // async exportGlobalSalesToExcel(
+  //   @Query('year') year: string,
+  //   @Res() res: Response,
+  // ): Promise<void> {
+  //   console.log('Controller exportGlobalSalesToExcel called with:', { year });
+  //   if (!year || !/^\d{4}$/.test(year)) {
+  //     throw new BadRequestException('Invalid year format. Use YYYY.');
+  //   }
+  //   await this.commandeVenteService.exportGlobalSalesToExcel(year, res);
+  // }
+
+  @Get('global-sales-summary/export-excel')
   async exportGlobalSalesToExcel(
     @Query('year') year: string,
+    @Query('clientId') clientId: string, // ⚠️ AJOUT
     @Res() res: Response,
   ): Promise<void> {
-    console.log('Controller exportGlobalSalesToExcel called with:', { year });
+    console.log('Controller exportGlobalSalesToExcel called with:', {
+      year,
+      clientId,
+    });
     if (!year || !/^\d{4}$/.test(year)) {
       throw new BadRequestException('Invalid year format. Use YYYY.');
     }
-    await this.commandeVenteService.exportGlobalSalesToExcel(year, res);
+    await this.commandeVenteService.exportGlobalSalesToExcel(
+      year,
+      res,
+      clientId,
+    );
   }
-
   // Nouvelle route pour les clients
   @Get('clients')
   async getClients(): Promise<{ id: number; name: string }[]> {

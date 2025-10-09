@@ -3501,8 +3501,146 @@ export class CommandeVenteService {
     }
   }
 
-  async exportGlobalSalesToExcel(year: string, res: Response): Promise<void> {
-    console.log('exportGlobalSalesToExcel called with:', { year });
+  // async exportGlobalSalesToExcel(year: string, res: Response): Promise<void> {
+  //   console.log('exportGlobalSalesToExcel called with:', { year });
+
+  //   if (!year || !/^\d{4}$/.test(year)) {
+  //     console.error('Invalid year format received:', year);
+  //     throw new BadRequestException('Invalid year format. Use YYYY.');
+  //   }
+
+  //   const parsedYear = Number(year);
+  //   if (isNaN(parsedYear) || parsedYear < 1900 || parsedYear > 9999) {
+  //     console.error('Invalid year value received:', year);
+  //     throw new BadRequestException('Invalid year value.');
+  //   }
+
+  //   try {
+  //     const queryBuilder = this.commandeVenteRepository
+  //       .createQueryBuilder('cv')
+  //       .leftJoin('client', 'c', 'cv.id_client = c.id_client')
+  //       .select([
+  //         'c.nom AS client_name',
+  //         'COUNT(DISTINCT cv.id_commande_vente) AS total_factures',
+  //         'COALESCE(SUM(cv.montant_total), 0) AS total_ventes',
+  //         'COALESCE(SUM(cv.montant_paye), 0) AS total_regle',
+  //       ])
+  //       .where('YEAR(cv.date_commande_vente) = :year', { year: parsedYear })
+  //       .andWhere('cv.validee = :validee', { validee: 1 })
+  //       .andWhere('cv.avoir = :avoir', { avoir: 0 })
+  //       .groupBy('c.id_client, c.nom');
+
+  //     console.log(
+  //       'Executing export query:',
+  //       queryBuilder.getQueryAndParameters(),
+  //     );
+  //     const results = await queryBuilder.getRawMany();
+  //     console.log('Export data:', results);
+
+  //     const workbook = new ExcelJS.Workbook();
+  //     const worksheet = workbook.addWorksheet(`Ventes ${year}`, {
+  //       properties: { tabColor: { argb: 'FF4CAF50' } },
+  //     });
+
+  //     worksheet.columns = [
+  //       { header: 'Client', key: 'client_name', width: 30 },
+  //       { header: 'Nombre de Factures', key: 'total_factures', width: 20 },
+  //       { header: 'Total Ventes (FCFA)', key: 'total_ventes', width: 20 },
+  //       { header: 'Montant Payé (FCFA)', key: 'total_regle', width: 20 },
+  //       {
+  //         header: 'Montant Restant (FCFA)',
+  //         key: 'total_en_attente',
+  //         width: 20,
+  //       },
+  //     ];
+
+  //     worksheet.mergeCells('A1:E1');
+  //     worksheet.getCell('A1').value = `Situation globales par client ${year}`;
+  //     worksheet.getCell('A1').font = { size: 16, bold: true };
+  //     worksheet.getCell('A1').alignment = {
+  //       vertical: 'middle',
+  //       horizontal: 'center',
+  //     };
+  //     worksheet.getCell('A1').fill = {
+  //       type: 'pattern',
+  //       pattern: 'solid',
+  //       fgColor: { argb: 'FFE0F7FA' },
+  //     };
+
+  //     worksheet.getRow(2).values = [
+  //       'Client',
+  //       'Nombre de Factures',
+  //       'Total Ventes (FCFA)',
+  //       'Montant Payé (FCFA)',
+  //       'Montant Restant (FCFA)',
+  //     ];
+
+  //     worksheet.getRow(2).eachCell((cell) => {
+  //       cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+  //       cell.fill = {
+  //         type: 'pattern',
+  //         pattern: 'solid',
+  //         fgColor: { argb: 'FF1976D2' },
+  //       };
+  //       cell.alignment = { vertical: 'middle', horizontal: 'center' };
+  //       cell.border = {
+  //         top: { style: 'thin' },
+  //         left: { style: 'thin' },
+  //         bottom: { style: 'thin' },
+  //         right: { style: 'thin' },
+  //       };
+  //     });
+
+  //     results.forEach((row) => {
+  //       worksheet.addRow({
+  //         client_name: row.client_name || 'Inconnu',
+  //         total_factures: Number(row.total_factures || 0),
+  //         total_ventes: Number(row.total_ventes || 0),
+  //         total_regle: Number(row.total_regle || 0),
+  //         total_en_attente:
+  //           Number(row.total_ventes || 0) - Number(row.total_regle || 0),
+  //       });
+  //     });
+
+  //     worksheet.eachRow((row, rowNumber) => {
+  //       if (rowNumber > 2) {
+  //         row.eachCell((cell) => {
+  //           cell.border = {
+  //             top: { style: 'thin' },
+  //             left: { style: 'thin' },
+  //             bottom: { style: 'thin' },
+  //             right: { style: 'thin' },
+  //           };
+  //           cell.alignment = { vertical: 'middle', horizontal: 'left' };
+  //         });
+  //       }
+  //     });
+
+  //     res.setHeader(
+  //       'Content-Type',
+  //       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  //     );
+  //     res.setHeader(
+  //       'Content-Disposition',
+  //       `attachment; filename=situation_global_${year}.xlsx`,
+  //     );
+
+  //     await workbook.xlsx.write(res);
+  //     res.end();
+  //   } catch (error) {
+  //     console.error('Export query failed:', error);
+  //     throw new InternalServerErrorException(
+  //       `Failed to execute export query: ${error.message}`,
+  //     );
+  //   }
+  // }
+
+  async exportGlobalSalesToExcel(
+    year: string,
+    res: Response,
+    clientId?: string,
+  ): Promise<void> {
+    console.log('exportGlobalSalesToExcel called with:', { year, clientId });
 
     if (!year || !/^\d{4}$/.test(year)) {
       console.error('Invalid year format received:', year);
@@ -3527,8 +3665,16 @@ export class CommandeVenteService {
         ])
         .where('YEAR(cv.date_commande_vente) = :year', { year: parsedYear })
         .andWhere('cv.validee = :validee', { validee: 1 })
-        .andWhere('cv.avoir = :avoir', { avoir: 0 })
-        .groupBy('c.id_client, c.nom');
+        .andWhere('cv.avoir = :avoir', { avoir: 0 });
+
+      // ⚠️ AJOUT : Filtrer par client si clientId est fourni
+      if (clientId && clientId !== 'all') {
+        queryBuilder.andWhere('c.id_client = :clientId', {
+          clientId: Number(clientId),
+        });
+      }
+
+      queryBuilder.groupBy('c.id_client, c.nom');
 
       console.log(
         'Executing export query:',
@@ -3554,8 +3700,14 @@ export class CommandeVenteService {
         },
       ];
 
+      // ⚠️ MODIFICATION : Titre dynamique selon le filtre
+      const title =
+        clientId && clientId !== 'all'
+          ? `Situation client ${results[0]?.client_name || ''} - ${year}`
+          : `Situation globale par client ${year}`;
+
       worksheet.mergeCells('A1:E1');
-      worksheet.getCell('A1').value = `Résumé des Ventes ${year}`;
+      worksheet.getCell('A1').value = title;
       worksheet.getCell('A1').font = { size: 16, bold: true };
       worksheet.getCell('A1').alignment = {
         vertical: 'middle',
@@ -3616,14 +3768,17 @@ export class CommandeVenteService {
         }
       });
 
+      // ⚠️ MODIFICATION : Nom de fichier dynamique
+      const filename =
+        clientId && clientId !== 'all'
+          ? `situation_client_${clientId}_${year}.xlsx`
+          : `situation_global_${year}.xlsx`;
+
       res.setHeader(
         'Content-Type',
         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       );
-      res.setHeader(
-        'Content-Disposition',
-        `attachment; filename=situation_global_${year}.xlsx`,
-      );
+      res.setHeader('Content-Disposition', `attachment; filename=${filename}`);
 
       await workbook.xlsx.write(res);
       res.end();
