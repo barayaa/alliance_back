@@ -567,8 +567,8 @@ export class CommandeVenteService {
   //       .lineTo(x, y + this.ROW_HEIGHT)
   //       .stroke();
 
-  //     // Prix unitaire
-  //     doc.text(Number(ligne.prix_vente || 0).toFixed(2), x + 5, y + 5, {
+  //     // Prix unitaire (arrondi)
+  //     doc.text(Math.round(ligne.prix_vente || 0).toString(), x + 5, y + 5, {
   //       width: columnWidths[2] - 10,
   //       align: 'right',
   //     });
@@ -600,8 +600,8 @@ export class CommandeVenteService {
   //       .lineTo(x, y + this.ROW_HEIGHT)
   //       .stroke();
 
-  //     // Montant total ligne
-  //     doc.text(Number(totalLigne).toFixed(2), x + 5, y + 5, {
+  //     // Montant total ligne (arrondi)
+  //     doc.text(Math.round(totalLigne).toString(), x + 5, y + 5, {
   //       width: columnWidths[4] - 10,
   //       align: 'right',
   //     });
@@ -634,12 +634,11 @@ export class CommandeVenteService {
   //     this.drawFinancialSummary(doc, summaryTop, commande);
   //   }
   // }
-
   private drawFullInvoice(doc: PDFDocument, commande: any): void {
     // Récupérer la position Y après l'en-tête
     const tableTop = this.drawHeader(doc, commande, 'full');
     const tableLeft = this.MARGINS;
-    const columnWidths = [220, 70, 80, 90, 80]; // 5 colonnes au lieu de 6
+    const columnWidths = [220, 70, 80, 90, 80];
 
     // En-tête du tableau
     this.drawTableHeader(doc, tableTop, tableLeft, columnWidths, [
@@ -650,13 +649,28 @@ export class CommandeVenteService {
       'Montant',
     ]);
 
+    // FILTRER les lignes pour exclure le timbre fiscal
+    const lignesFiltered = commande.lignes.filter((ligne: any) => {
+      const designation = (
+        ligne.produit?.produit ||
+        ligne.designation?.toString() ||
+        ''
+      ).toLowerCase();
+      const prixVente = Number(ligne.prix_vente);
+
+      // Exclure le timbre fiscal : prix = 200 ET (contient "timbre" OU "fiscal")
+      const isTimbreFiscal =
+        prixVente === 200 &&
+        (designation.includes('timbre') || designation.includes('fiscal'));
+
+      return !isTimbreFiscal;
+    });
+
     // Lignes du tableau
     let y = tableTop + 25;
-    let subtotal = 0;
-
     doc.fontSize(8).font('Helvetica');
 
-    commande.lignes.forEach((ligne: any, index: number) => {
+    lignesFiltered.forEach((ligne: any, index: number) => {
       if (y + this.ROW_HEIGHT > this.MAX_Y - 100) {
         doc.addPage();
         const newTableTop = this.drawHeader(doc, commande, 'full');
@@ -671,8 +685,6 @@ export class CommandeVenteService {
       }
 
       const totalLigne = ligne.prix_vente * ligne.quantite;
-      subtotal += totalLigne;
-
       let x = tableLeft;
 
       // Bordures verticales de début
@@ -768,13 +780,19 @@ export class CommandeVenteService {
       y += this.ROW_HEIGHT;
     });
 
-    // Résumé financier
+    // CRÉER UNE COPIE DE LA COMMANDE AVEC LES LIGNES FILTRÉES
+    const commandeFiltered = {
+      ...commande,
+      lignes: lignesFiltered,
+    };
+
+    // Résumé financier avec les lignes filtrées
     const summaryTop = y + 20;
     if (summaryTop > this.MAX_Y - 150) {
       doc.addPage();
-      this.drawFinancialSummary(doc, 40, commande);
+      this.drawFinancialSummary(doc, 40, commandeFiltered);
     } else {
-      this.drawFinancialSummary(doc, summaryTop, commande);
+      this.drawFinancialSummary(doc, summaryTop, commandeFiltered);
     }
   }
 
@@ -783,282 +801,6 @@ export class CommandeVenteService {
       .toString()
       .replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
   }
-
-  // private drawFullInvoice(doc: PDFDocument, commande: any): void {
-  //   // Récupérer la position Y après l'en-tête
-  //   const tableTop = this.drawHeader(doc, commande, 'full');
-  //   const tableLeft = this.MARGINS;
-  //   const columnWidths = [200, 60, 70, 60, 80, 70]; // Ajusté pour éviter débordement
-
-  //   // En-tête du tableau
-  //   this.drawTableHeader(doc, tableTop, tableLeft, columnWidths, [
-  //     'Désignation',
-  //     'Qté',
-  //     'P.U.',
-  //     'Remise',
-  //     'Expiration',
-  //     'Montant',
-  //   ]);
-
-  //   // Lignes du tableau
-  //   let y = tableTop + 25; // Espace après l'en-tête du tableau
-  //   let subtotal = 0;
-
-  //   doc.fontSize(8).font('Helvetica'); // Taille plus petite pour éviter débordement
-
-  //   commande.lignes.forEach((ligne: any) => {
-  //     if (y + this.ROW_HEIGHT > this.MAX_Y - 100) {
-  //       // Garder 100px pour le résumé
-  //       doc.addPage();
-  //       const newTableTop = this.drawHeader(doc, commande, 'full');
-  //       this.drawTableHeader(doc, newTableTop, tableLeft, columnWidths, [
-  //         'Désignation',
-  //         'Qté',
-  //         'P.U.',
-  //         'Remise',
-  //         'Expiration',
-  //         'Montant',
-  //       ]);
-  //       y = newTableTop + 25;
-  //     }
-
-  //     const totalLigne = ligne.prix_vente * ligne.quantite;
-  //     subtotal += totalLigne;
-
-  //     let x = tableLeft;
-  //     // Désignation (tronquée si trop longue)
-  //     const designation = sanitizeString(
-  //       ligne.produit?.produit || ligne.designation?.toString() || 'N/A',
-  //     );
-  //     doc.text(designation.substring(0, 35), x, y, {
-  //       width: columnWidths[0],
-  //       align: 'left',
-  //     });
-  //     x += columnWidths[0];
-
-  //     // Quantité
-  //     doc.text(ligne.quantite.toString(), x, y, {
-  //       width: columnWidths[1],
-  //       align: 'center',
-  //     });
-  //     x += columnWidths[1];
-
-  //     // Prix unitaire
-  //     doc.text(Number(ligne.prix_vente || 0).toFixed(2), x, y, {
-  //       width: columnWidths[2],
-  //       align: 'right',
-  //     });
-  //     x += columnWidths[2];
-
-  //     // Remise
-  //     doc.text(Number(ligne.remise || 0).toFixed(2), x, y, {
-  //       width: columnWidths[3],
-  //       align: 'right',
-  //     });
-  //     x += columnWidths[3];
-
-  //     // Date d'expiration (format court)
-  //     const dateExp = ligne.produit?.validite_amm
-  //       ? new Date(ligne.produit.validite_amm).toLocaleDateString('fr-FR', {
-  //           day: '2-digit',
-  //           month: '2-digit',
-  //           year: '2-digit',
-  //         })
-  //       : 'N/A';
-  //     doc.text(dateExp, x, y, {
-  //       width: columnWidths[4],
-  //       align: 'center',
-  //     });
-  //     x += columnWidths[4];
-
-  //     // Montant total ligne
-  //     doc.text(Number(totalLigne).toFixed(2), x, y, {
-  //       width: columnWidths[5],
-  //       align: 'right',
-  //     });
-
-  //     y += this.ROW_HEIGHT;
-  //   });
-
-  //   // Ligne de fermeture du tableau
-  //   doc
-  //     .moveTo(tableLeft, y)
-  //     .lineTo(tableLeft + columnWidths.reduce((a, b) => a + b, 0), y)
-  //     .stroke();
-
-  //   // Résumé financier - avec espace approprié
-  //   const summaryTop = y + 20;
-  //   if (summaryTop > this.MAX_Y - 150) {
-  //     doc.addPage();
-  //     this.drawFinancialSummary(doc, 40, commande);
-  //   } else {
-  //     this.drawFinancialSummary(doc, summaryTop, commande);
-  //   }
-  // }
-
-  // private drawFinancialSummary(
-  //   doc: PDFDocument,
-  //   summaryTop: number,
-  //   commande: any,
-  // ): void {
-  //   // Calculs basés sur les données de la commande (corrigés selon ta logique)
-  //   const montantHT = commande.lignes.reduce(
-  //     (sum: number, ligne: any) => sum + ligne.prix_vente * ligne.quantite,
-  //     0,
-  //   );
-  //   const remise = Number(commande.remise || 0);
-  //   const montantNetHT = montantHT - remise;
-  //   const tva = Number(commande.tva || 0);
-  //   const isb = Number(commande.isb || 0);
-  //   const timbreFiscal = 200;
-  //   const totalTTC = montantNetHT + tva + isb + timbreFiscal;
-
-  //   // Titre
-  //   doc.fontSize(12).font('Helvetica-Bold');
-  //   doc.text('RÉSUMÉ FINANCIER', this.MARGINS, summaryTop);
-
-  //   // Ligne de séparation
-  //   doc
-  //     .moveTo(this.MARGINS, summaryTop + 15)
-  //     .lineTo(this.PAGE_WIDTH - this.MARGINS, summaryTop + 15)
-  //     .stroke();
-
-  //   let currentY = summaryTop + 25;
-  //   doc.fontSize(9).font('Helvetica');
-
-  //   // Montant HT initial
-  //   doc.text('Montant HT:', this.MARGINS, currentY);
-  //   doc.text(
-  //     `${montantHT.toFixed(2)} CFA`,
-  //     this.PAGE_WIDTH - this.MARGINS - 100,
-  //     currentY,
-  //     { align: 'right' },
-  //   );
-  //   currentY += 15;
-
-  //   // Remise (si > 0)
-  //   if (remise > 0) {
-  //     doc.text('Remise:', this.MARGINS, currentY);
-  //     doc.text(
-  //       `-${remise.toFixed(2)} CFA`,
-  //       this.PAGE_WIDTH - this.MARGINS - 100,
-  //       currentY,
-  //       { align: 'right' },
-  //     );
-  //     currentY += 15;
-
-  //     // Net HT après remise
-  //     doc.text('Net HT:', this.MARGINS, currentY);
-  //     doc.text(
-  //       `${montantNetHT.toFixed(2)} CFA`,
-  //       this.PAGE_WIDTH - this.MARGINS - 100,
-  //       currentY,
-  //       { align: 'right' },
-  //     );
-  //     currentY += 15;
-  //   }
-
-  //   // TVA (si > 0)
-  //   if (tva > 0) {
-  //     const tauxTVA =
-  //       montantNetHT > 0 ? ((tva / montantNetHT) * 100).toFixed(0) : '0';
-  //     doc.text(`TVA (${tauxTVA}%):`, this.MARGINS, currentY);
-  //     doc.text(
-  //       `${tva.toFixed(2)} CFA`,
-  //       this.PAGE_WIDTH - this.MARGINS - 100,
-  //       currentY,
-  //       { align: 'right' },
-  //     );
-  //     currentY += 15;
-  //   }
-
-  //   // ISB/Précompte
-  //   if (isb > 0) {
-  //     doc.text('ISB/Précompte (2%):', this.MARGINS, currentY);
-  //     doc.text(
-  //       `${isb.toFixed(2)} CFA`,
-  //       this.PAGE_WIDTH - this.MARGINS - 100,
-  //       currentY,
-  //       { align: 'right' },
-  //     );
-  //     currentY += 15;
-  //   }
-
-  //   // Timbre fiscal
-  //   doc.text('Timbre Fiscal:', this.MARGINS, currentY);
-  //   doc.text(
-  //     `${timbreFiscal.toFixed(2)} CFA`,
-  //     this.PAGE_WIDTH - this.MARGINS - 100,
-  //     currentY,
-  //     { align: 'right' },
-  //   );
-  //   currentY += 20;
-
-  //   // Ligne de séparation avant total
-  //   doc
-  //     .moveTo(this.MARGINS, currentY)
-  //     .lineTo(this.PAGE_WIDTH - this.MARGINS, currentY)
-  //     .stroke();
-  //   currentY += 10;
-
-  //   // Total TTC (en gras)
-  //   doc.fontSize(11).font('Helvetica-Bold');
-  //   doc.text('TOTAL TTC:', this.MARGINS, currentY);
-  //   doc.text(
-  //     `${totalTTC.toFixed(2)} CFA`,
-  //     this.PAGE_WIDTH - this.MARGINS - 100,
-  //     currentY,
-  //     { align: 'right' },
-  //   );
-  //   currentY += 25;
-
-  //   // Informations complémentaires
-  //   doc.fontSize(8).font('Helvetica');
-  //   doc.text(
-  //     `Moyen de paiement: ${sanitizeString(commande.type_reglement || 'E')}`,
-  //     this.MARGINS,
-  //     currentY,
-  //   );
-  //   currentY += 12;
-  //   doc.text(
-  //     `Nombre d'articles: ${commande.lignes.length}`,
-  //     this.MARGINS,
-  //     currentY,
-  //   );
-  //   currentY += 12;
-  //   doc.text('* Montants en francs CFA', this.MARGINS, currentY);
-  //   currentY += 20;
-
-  //   // Conversion en lettres
-  //   doc.fontSize(9).font('Helvetica-Bold');
-  //   doc.text(
-  //     'Arrêté la présente facture à la somme de :',
-  //     this.MARGINS,
-  //     currentY,
-  //   );
-  //   currentY += 15;
-  //   doc.fontSize(9).font('Helvetica');
-  //   doc.text(
-  //     `${numberToWordsFr(totalTTC)} francs CFA`,
-  //     this.MARGINS,
-  //     currentY,
-  //     {
-  //       width: this.PAGE_WIDTH - 2 * this.MARGINS,
-  //       align: 'center',
-  //     },
-  //   );
-  //   currentY += 25;
-
-  //   // Signature
-  //   doc.fontSize(9).font('Helvetica-Bold');
-  //   doc.text('Le Gestionnaire', this.MARGINS, currentY, { underline: true });
-
-  //   // Ligne finale
-  //   doc
-  //     .moveTo(this.MARGINS, currentY + 20)
-  //     .lineTo(this.PAGE_WIDTH - this.MARGINS, currentY + 20)
-  //     .stroke();
-  // }
 
   private drawFinancialSummary(
     doc: PDFDocument,
@@ -1228,6 +970,7 @@ export class CommandeVenteService {
       .lineTo(this.PAGE_WIDTH - this.MARGINS, currentY + 20)
       .stroke();
   }
+
   private drawSimpleInvoice(doc: PDFDocument, commande: any): void {
     const tableTop = 110;
     const tableLeft = 50;
@@ -1854,6 +1597,67 @@ export class CommandeVenteService {
       .stroke();
   }
 
+  async findTout(
+    startDate?: string,
+    endDate?: string,
+    idClient?: number,
+    numeroFacture?: string,
+  ): Promise<CommandeVente[]> {
+    const where: any = {
+      type_facture: 'FV',
+      statut: 0,
+    };
+
+    // Validation et gestion des dates
+    if (startDate && endDate) {
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+
+      // Validation des dates
+      if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+        throw new BadRequestException('Dates invalides.');
+      }
+
+      // Ajuster la date de fin pour inclure toute la journée
+      end.setHours(23, 59, 59, 999);
+
+      where.date_commande_vente = Between(start, end);
+    }
+
+    if (idClient) {
+      where.id_client = idClient;
+    }
+
+    if (numeroFacture) {
+      where.id_commande_vente = numeroFacture;
+    }
+
+    try {
+      const query: any = {
+        where,
+        relations: ['client'],
+        select: [
+          'id_commande_vente',
+          'date_commande_vente',
+          'numero_seq',
+          'numero_facture_certifiee',
+          'montant_total',
+          'id_client',
+        ],
+        order: { date_commande_vente: 'DESC' },
+        // Appliquer la limite de 30 seulement si aucune date n'est fournie
+        ...(startDate && endDate ? {} : { take: 600, skip: 0 }),
+        cache: {
+          id: `factures_${startDate}_${endDate}_${idClient}_${numeroFacture}`,
+          milliseconds: 60000, // Cache de 1 minute
+        },
+      };
+
+      return await this.commandeVenteRepository.find(query);
+    } catch (error) {
+      throw new BadRequestException('Erreur lors du chargement des factures.');
+    }
+  }
   async findAll(
     startDate?: string,
     endDate?: string,
@@ -1903,7 +1707,7 @@ export class CommandeVenteService {
         ],
         order: { date_commande_vente: 'DESC' },
         // Appliquer la limite de 30 seulement si aucune date n'est fournie
-        ...(startDate && endDate ? {} : { take: 30, skip: 0 }),
+        ...(startDate && endDate ? {} : { take: 100, skip: 0 }),
         cache: {
           id: `factures_${startDate}_${endDate}_${idClient}_${numeroFacture}`,
           milliseconds: 60000, // Cache de 1 minute
@@ -2805,130 +2609,6 @@ export class CommandeVenteService {
       }
     });
   }
-  // async cancelCommandeVente(
-  //   id_commande_vente: number,
-  //   login: string,
-  // ): Promise<void> {
-  //   return this.commandeVenteRepository.manager.transaction(async (manager) => {
-  //     try {
-  //       const commande = await manager.findOne(CommandeVente, {
-  //         where: { id_commande_vente, type_facture: 'FV' },
-  //         relations: ['client', 'lignes', 'lignes.produit'],
-  //       });
-  //       if (!commande) {
-  //         throw new NotFoundException(
-  //           `Facture de vente avec ID ${id_commande_vente} non trouvée`,
-  //         );
-  //       }
-  //       if (commande.statut === 2) {
-  //         throw new BadRequestException(
-  //           `Facture ${id_commande_vente} déjà annulée`,
-  //         );
-  //       }
-  //       if (commande.validee !== 1) {
-  //         throw new BadRequestException(
-  //           `Facture ${id_commande_vente} non validée, impossible d'annuler`,
-  //         );
-  //       }
-  //       if (commande.montant_paye > 0) {
-  //         throw new BadRequestException(
-  //           `Facture ${id_commande_vente} a des paiements enregistrés, impossible d'annuler`,
-  //         );
-  //       }
-
-  //       // Étape 2 : Valider le client
-  //       const client = await manager.findOneBy(Client, {
-  //         id_client: commande.id_client,
-  //       });
-  //       if (!client) {
-  //         throw new BadRequestException(
-  //           `Client avec ID ${commande.id_client} non trouvé`,
-  //         );
-  //       }
-
-  //       // Étape 3 : Restaurer le stock pour chaque ligne
-  //       for (const ligne of commande.lignes) {
-  //         const produit = await manager.findOneBy(Produit, {
-  //           id_produit: ligne.designation,
-  //         });
-  //         if (!produit) {
-  //           throw new BadRequestException(
-  //             `Produit avec ID ${ligne.designation} non trouvé`,
-  //           );
-  //         }
-
-  //         const stockActuel = produit.stock_courant || 0;
-  //         const newStock = stockActuel + ligne.quantite;
-
-  //         // Mettre à jour le stock du produit
-  //         await manager.update(
-  //           Produit,
-  //           { id_produit: ligne.designation },
-  //           { stock_courant: newStock },
-  //         );
-
-  //         // Créer une entrée MMvtStock pour le retour
-  //         const mvtStock = manager.create(MMvtStock, {
-  //           id_produit: ligne.designation,
-  //           quantite: ligne.quantite, // Quantité positive pour restaurer
-  //           quantite_commandee: 0,
-  //           cout: produit.prix_unitaire || 0,
-  //           date: new Date(),
-  //           user: login || 'Inconnu',
-  //           type: 3, // Type pour retour de stock
-  //           magasin: 1, // Ajuste selon ta logique
-  //           commentaire: `Annulation de la facture de vente N° ${id_commande_vente}`,
-  //           stock_avant: stockActuel,
-  //           stock_apres: newStock,
-  //           id_commande_vente,
-  //           annule: 'N',
-  //           num_lot: '', // Pas dans LignesCommandeVente, laissé vide
-  //           date_expiration: null, // Pas dans LignesCommandeVente, laissé null
-  //           conformite: 'O',
-  //         });
-  //         await manager.save(MMvtStock, mvtStock);
-
-  //         // Mettre à jour le stock capture
-  //         await this.captureStockService.updateStockCapture(
-  //           ligne.designation,
-  //           newStock,
-  //         );
-  //       }
-
-  //       // Étape 4 : Marquer la commande comme annulée
-  //       await manager.update(
-  //         CommandeVente,
-  //         { id_commande_vente },
-  //         {
-  //           statut: 1, // Statut annulé
-  //           montant_total: 0,
-  //           montant_restant: 0,
-  //           tva: 0,
-  //           isb: 0,
-  //           // date_modification: new Date(), // Ajoute ce champ si tu modifies l'entité
-  //         },
-  //       );
-
-  //       // Étape 5 : Enregistrer un log
-  //       const logEntry = manager.create(Log, {
-  //         log: `Annulation de la facture de vente N° ${id_commande_vente} par ${login}`,
-  //         date: new Date(),
-  //         user: login || 'Inconnu',
-  //         archive: 1,
-  //       });
-  //       await manager.save(Log, logEntry);
-
-  //       console.log(`Facture ${id_commande_vente} annulée avec succès`);
-  //     } catch (error) {
-  //       console.error(
-  //         'Erreur lors de l’annulation:',
-  //         JSON.stringify(error, null, 2),
-  //       );
-  //       throw error;
-  //     }
-  //   });
-  // }
-
   private typeReglementMapping: { [key: string]: string } = {
     E: 'ESPECES',
     V: 'VIREMENT',
@@ -5960,7 +5640,7 @@ export class CommandeVenteService {
       const montantRestant = invoice.montant_restant || 0;
       const rowData = [
         new Date(invoice.date_commande_vente).toLocaleDateString('fr-FR'),
-        invoice.numero_facture_certifiee || 'N/A',
+        invoice.id_commande_vente || 'N/A',
         `${(invoice.montant_total || 0).toLocaleString('fr-FR', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).replace(/\s/g, ' ')}`,
         `${(invoice.montant_paye || 0).toLocaleString('fr-FR', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).replace(/\s/g, ' ')}`,
         `${montantRestant.toLocaleString('fr-FR', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).replace(/\s/g, ' ')}`,

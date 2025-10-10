@@ -72,6 +72,21 @@ export class CommandeVenteController {
   //   );
   // }
 
+  @Get('tout')
+  async findT(
+    @Query('startDate') startDate: string,
+    @Query('endDate') endDate: string,
+    @Query('idClient') idClient: string,
+    @Query('numeroFacture') numeroFacture: string,
+  ) {
+    return this.commandeVenteService.findTout(
+      startDate,
+      endDate,
+      idClient ? parseInt(idClient) : undefined,
+      numeroFacture,
+    );
+  }
+
   @Auth(AuthType.None)
   @Post('export-unpaid-by-client')
   async exportUnpaidInvoicesByClientPost(
