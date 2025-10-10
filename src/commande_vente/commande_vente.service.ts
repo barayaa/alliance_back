@@ -1646,7 +1646,7 @@ export class CommandeVenteService {
         ],
         order: { date_commande_vente: 'DESC' },
         // Appliquer la limite de 30 seulement si aucune date n'est fournie
-        ...(startDate && endDate ? {} : { take: 600, skip: 0 }),
+        ...(startDate && endDate ? {} : { take: 2500, skip: 0 }),
         cache: {
           id: `factures_${startDate}_${endDate}_${idClient}_${numeroFacture}`,
           milliseconds: 60000, // Cache de 1 minute
